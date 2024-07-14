@@ -15,7 +15,7 @@ RUN mkdir -p /opt/toolchains/dc && \
     chown -R $(id -u):$(id -g) /opt/toolchains/dc
 # Uses bash in docker ( necessary for sourcing environ.sh)
 SHELL ["/bin/bash", "-c"]
-RUN git clone --depth 1 --branch 07JUL24 https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
+RUN git clone --depth 1 --branch 13JUL24 https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
 
 # Configuring environ.sh
 RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
@@ -40,4 +40,27 @@ RUN source /opt/toolchains/dc/kos/environ.sh && \
     cd mkdcdisc && \
     meson setup builddir && \
     meson compile -C builddir && \
-    cp builddir/mkdcdisc /usr/local/bin/
+    cp builddir/mkdcdisc /usr/local/bin/ && \
+    ln -s  /opt/toolchains/dc/mkdcdisc /opt/mkdcdisc
+
+# Create the user
+ARG USER=non-root
+ARG GROUPNAME=$USER
+ARG UID=12345
+ARG GID=23456
+
+RUN addgroup \
+    --gid "$GID" \
+    "$GROUPNAME" \
+&&  adduser \
+    --disabled-password \
+    --gecos "" \
+    --ingroup "$GROUPNAME" \
+    --uid "$UID" \
+    $USER
+# ********************************************************
+# * Anything else you want to do like clean up goes here *
+# ********************************************************
+
+# [Optional] Set the default user. Omit if you want to keep the default as root.
+USER $USER
