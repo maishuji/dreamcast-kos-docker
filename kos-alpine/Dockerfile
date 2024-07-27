@@ -15,7 +15,7 @@ RUN mkdir -p /opt/toolchains/dc && \
     chown -R $(id -u):$(id -g) /opt/toolchains/dc
 # Uses bash in docker ( necessary for sourcing environ.sh)
 SHELL ["/bin/bash", "-c"]
-RUN git clone --depth 1 --branch 13JUL24 https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
+RUN git clone --depth 1 --branch 27JUL24 https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
 
 # Configuring environ.sh
 RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
