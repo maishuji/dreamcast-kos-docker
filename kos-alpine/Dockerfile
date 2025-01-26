@@ -13,9 +13,10 @@ RUN apk add gawk patch bzip2 tar make gmp mpc mpfr-dev gettext wget \
 RUN mkdir -p /opt/toolchains/dc && \
     chmod -R 755 /opt/toolchains/dc && \
     chown -R $(id -u):$(id -g) /opt/toolchains/dc
-# Uses bash in docker ( necessary for sourcing environ.sh)
+
+RUN apk add coreutils # Need fmt binary
 SHELL ["/bin/bash", "-c"]
-RUN git clone --depth 1 --branch 27JUL24 https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
+RUN git clone --depth 1 --branch 26JAN25 https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
 
 # Configuring environ.sh
 RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
@@ -24,14 +25,19 @@ RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
 
 # Kos-ports
 RUN source /opt/toolchains/dc/kos/environ.sh && \
-    git clone --branch feature/update-freetype-version --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports && \
-    rm -rf /opt/toolchains/dc/kos-ports/libjimtcl # broken lib
+    git clone --branch feature/update-freetype-version --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports
+    
+# Removing broken libs
 
+RUN rm -rf /opt/toolchains/dc/kos-ports/libjimtcl && \
+    rm -rf /opt/toolchains/dc/kos-ports/mruby
+
+# Building kos-ports libraries and install them
 RUN source /opt/toolchains/dc/kos/environ.sh && \
    /opt/toolchains/dc/kos-ports/utils/build-all.sh
 
 # Remove broken examle kgl
-RUN sed -e s/kgl//g -i /opt/toolchains/dc/kos/examples/dreamcast/Makefile && cat /opt/toolchains/dc/kos/examples/dreamcast/Makefile
+#RUN sed -e s/kgl//g -i /opt/toolchains/dc/kos/examples/dreamcast/Makefile && cat /opt/toolchains/dc/kos/examples/dreamcast/Makefile
 
 # mkdcdisc
 RUN source /opt/toolchains/dc/kos/environ.sh && \
@@ -42,6 +48,14 @@ RUN source /opt/toolchains/dc/kos/environ.sh && \
     meson compile -C builddir && \
     cp builddir/mkdcdisc /usr/local/bin/ && \
     ln -s  /opt/toolchains/dc/mkdcdisc /opt/mkdcdisc
+
+RUN apk add include-what-you-use
+RUN apk add --upgrade freetype-dev
+RUN apk add mesa-dev glew-dev sdl12-compat-dev sdl_image-dev sdl_mixer-dev
+RUN apk add freeglut-dev
+RUN cd /opt/ && git clone https://github.com/paralin/soil.git && cd soil && \
+     mkdir build && cd build && cmake .. && make && \
+     mv libsoil.a /usr/lib/ && mv ../inc/SOIL /usr/include/ 
 
 # Create the user
 ARG USER=non-root
