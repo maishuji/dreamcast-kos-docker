@@ -1,4 +1,4 @@
-FROM maishuji/dc-chain:14.1.1_gdb
+FROM maishuji/dc-chain:14.2.1-dev
 
 RUN apk update
 
@@ -16,7 +16,7 @@ RUN mkdir -p /opt/toolchains/dc && \
 
 RUN apk add coreutils # Need fmt binary
 SHELL ["/bin/bash", "-c"]
-RUN git clone --depth 1 --branch 26JAN25 https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
+RUN git clone --depth 1 --branch 01FEB25 https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
 
 # Configuring environ.sh
 RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
@@ -24,17 +24,35 @@ RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
     make
 
 # Kos-ports
-RUN source /opt/toolchains/dc/kos/environ.sh && \
-    git clone --branch feature/update-freetype-version --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports
-    
-# Removing broken libs
+RUN echo "Checkout kos-ports" && source /opt/toolchains/dc/kos/environ.sh && \
+git clone --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports && \
+cd /opt/toolchains/dc/kos-ports/libGL && \
+sed -i 's|https://gitlab.com/simulant/GLdc.git|https://gitlab.com/quentin.cartier.dev/GLdc.git|g' Makefile && \
+echo "new3" && \
+sed -i '/GIT_REPOSITORY/s|$|\nGIT_BRANCH = release/07DEC24|' Makefile
 
+RUN source /opt/toolchains/dc/kos/environ.sh && \
+    cd /opt/toolchains/dc/kos-ports/libGL && \
+    make install && \
+    cd /opt/toolchains/dc/kos-ports/libdcplib && \
+    make install
+
+# Removing libs that are not compiling
 RUN rm -rf /opt/toolchains/dc/kos-ports/libjimtcl && \
-    rm -rf /opt/toolchains/dc/kos-ports/mruby
+    rm -rf /opt/toolchains/dc/kos-ports/mruby && \
+    rm -rf /opt/toolchains/dc/kos-ports/libmp3 && \
+    rm -rf /opt/toolchains/dc/kos-ports/SDL && \
+    rm -rf /opt/toolchains/dc/kos-ports/SDL_ttf && \
+    rm -rf /opt/toolchains/dc/kos-ports/cglm
+
+# raylib cannot compile due to fastmath flag, so need a workaround in this case
+#RUN cd /opt/toolchains/dc/kos-ports/raylib4dc && \
+#    sed -i 's|^GIT_REPOSITORY = .*|GIT_REPOSITORY = https://github.com/maishuji/raylib|' Makefile && \
+#    sed -i 's|^GIT_BRANCH = .*|GIT_BRANCH = feature/dc-branch-compile|' Makefile
 
 # Building kos-ports libraries and install them
-RUN source /opt/toolchains/dc/kos/environ.sh && \
-   /opt/toolchains/dc/kos-ports/utils/build-all.sh
+#RUN source /opt/toolchains/dc/kos/environ.sh && \
+#   /opt/toolchains/dc/kos-ports/utils/build-all.sh
 
 # Remove broken examle kgl
 #RUN sed -e s/kgl//g -i /opt/toolchains/dc/kos/examples/dreamcast/Makefile && cat /opt/toolchains/dc/kos/examples/dreamcast/Makefile
@@ -49,13 +67,13 @@ RUN source /opt/toolchains/dc/kos/environ.sh && \
     cp builddir/mkdcdisc /usr/local/bin/ && \
     ln -s  /opt/toolchains/dc/mkdcdisc /opt/mkdcdisc
 
-RUN apk add include-what-you-use
-RUN apk add --upgrade freetype-dev
-RUN apk add mesa-dev glew-dev sdl12-compat-dev sdl_image-dev sdl_mixer-dev
-RUN apk add freeglut-dev
-RUN cd /opt/ && git clone https://github.com/paralin/soil.git && cd soil && \
-     mkdir build && cd build && cmake .. && make && \
-     mv libsoil.a /usr/lib/ && mv ../inc/SOIL /usr/include/ 
+#RUN apk add include-what-you-use
+#RUN apk add --upgrade freetype-dev
+#RUN apk add mesa-dev glew-dev sdl12-compat-dev sdl_image-dev sdl_mixer-dev
+#RUN apk add freeglut-dev
+#RUN cd /opt/ && git clone https://github.com/paralin/soil.git && cd soil && \
+#     mkdir build && cd build && cmake .. && make && \
+#     mv libsoil.a /usr/lib/ && mv ../inc/SOIL /usr/include/ 
 
 # Create the user
 ARG USER=non-root
@@ -66,12 +84,15 @@ ARG GID=23456
 RUN addgroup \
     --gid "$GID" \
     "$GROUPNAME" \
-&&  adduser \
+    && adduser \
     --disabled-password \
     --gecos "" \
     --ingroup "$GROUPNAME" \
     --uid "$UID" \
-    $USER
+    --home /home/$USER \
+    $USER \
+    && chown -R $USER:$GROUPNAME /home/$USER
+
 # ********************************************************
 # * Anything else you want to do like clean up goes here *
 # ********************************************************
