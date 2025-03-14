@@ -26,7 +26,7 @@ RUN echo "KOS: $SNAPSHOT_KOS " && \
 RUN apk update && apk add --no-cache gawk patch bzip2 tar make gmp mpc mpfr-dev gettext wget \
     libelf texinfo bison flex sed git diffutils curl jpeg \
     libpng-dev python3 pkgconfig libisofs-dev meson ruby-rake \
-    py3-pip py3-setuptools \
+    py3-pip py3-setuptools pipx\
     py3-wheel samurai cmake openssh cppcheck \
     coreutils # Need fmt binary
 
@@ -112,3 +112,4 @@ RUN rm -rf /var/cache/apk/*
 
 # Set default user
 USER $USER
+RUN pipx install cpplint && pipx ensurepath
