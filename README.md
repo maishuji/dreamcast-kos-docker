@@ -74,7 +74,7 @@ The version tag follows this format:
 - Example usage:
 
 ```sh
-docker run -it maishuji/dc-kos-image:14.2.1-dev-01mar25-kp01mar25-gl01mar25
+docker run -it maishuji/dc-kos-image:14.2.1-dev-01mar25-kp01mar25-gl01mar25 bash
 ```
 
 (This image is available on Docker Hub.)
