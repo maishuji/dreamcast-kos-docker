@@ -64,7 +64,7 @@ sed -i "/GIT_REPOSITORY/s|$|\nGIT_BRANCH = $snapshotGLdc|" Makefile
 #    make install
 
 # Removing non-compiling libraries
-RUN rm -rf /opt/toolchains/dc/kos-ports/{libjimtcl,mruby,libmp3,SDL,SDL_ttf,cglm}
+RUN rm -rf /opt/toolchains/dc/kos-ports/{libjimtcl,mruby,libmp3,cglm}
 
 # raylib cannot compile due to fastmath flag, so need a workaround in this case
 #RUN cd /opt/toolchains/dc/kos-ports/raylib4dc && \
@@ -96,6 +96,9 @@ RUN apk add freeglut-dev
 RUN cd /opt/ && git clone https://github.com/paralin/soil.git && cd soil && \
      mkdir build && cd build && cmake .. && make && \
      mv libsoil.a /usr/lib/ && mv ../inc/SOIL /usr/include/ 
+
+RUN apk add --no-cache clang-extra-tools
+
 
 # Create non-root user
 ARG USER=non-root
