@@ -89,15 +89,28 @@ RUN source /opt/toolchains/dc/kos/environ.sh && \
     cp builddir/mkdcdisc /usr/local/bin/ && \
     ln -s  /opt/toolchains/dc/mkdcdisc /opt/mkdcdisc
 
-RUN apk add include-what-you-use
-RUN apk add --upgrade freetype-dev
-RUN apk add mesa-dev glew-dev sdl12-compat-dev sdl_image-dev sdl_mixer-dev
-RUN apk add freeglut-dev
+RUN apk add --no-cache --upgrade \
+    freetype-dev \
+    mesa-dev \
+    glew-dev \
+    sdl12-compat-dev \
+    sdl_image-dev \
+    sdl_mixer-dev \
+    freeglut-dev \
+    include-what-you-use \
+    clang-extra-tools
+
 RUN cd /opt/ && git clone https://github.com/paralin/soil.git && cd soil && \
      mkdir build && cd build && cmake .. && make && \
      mv libsoil.a /usr/lib/ && mv ../inc/SOIL /usr/include/ 
 
-RUN apk add --no-cache clang-extra-tools
+
+# Install dc-tool-ip
+RUN source /opt/toolchains/dc/kos/environ.sh && \
+    git clone https://github.com/sizious/dcload-ip.git /opt/dc-tool-ip && \
+    cd /opt/dc-tool-ip && \
+    make && \
+    cp ./host-src/tool/dc-tool-ip /usr/local/bin/
 
 
 # Create non-root user
