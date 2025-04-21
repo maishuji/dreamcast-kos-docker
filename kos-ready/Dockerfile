@@ -112,6 +112,8 @@ RUN source /opt/toolchains/dc/kos/environ.sh && \
     make && \
     cp ./host-src/tool/dc-tool-ip /usr/local/bin/
 
+# Source environ.sh in the shell profile (bashrc or bash_profile)
+RUN echo "source /opt/toolchains/dc/kos/environ.sh" >> /etc/profile
 
 # Create non-root user
 ARG USER=non-root
