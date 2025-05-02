@@ -86,4 +86,3 @@ docker run -it maishuji/dc-kos-image:14.2.1-dev-01mar25-kp01mar25-gl01mar25 bash
 Currently, the following features are not yet implemented:
 
 - Debugging functionalities.
-- Remote debugging connection from the container to Dreamcast hardware.
