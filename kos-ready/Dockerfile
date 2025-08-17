@@ -2,25 +2,26 @@
 # and can be used to compile Dreamcast homebrew applications. The image is based on the dc-chain image
 
 # Build Arguments
-ARG snapshotKos=master
-ARG snapshotKosPorts=master
-ARG snapshotGLdc=master
+ARG snapshot_kos=master
+ARG snapshot_kosports=master
+ARG snapshot_gldc=master
 
 # Base image : Kos toolchain. The tag corresponds to the version of the toolchain (profile) used.
 FROM maishuji/dc-chain:14.2.1-dev
 
-ARG snapshotKos
-ENV SNAPSHOT_KOS=${snapshotKos}
+ARG snapshot_kos
+ENV SNAPSHOT_KOS=${snapshot_kos}
 
-ARG snapshotKosPorts
-ENV SNAPSHOT_KOSPORTS=${snapshotKosPorts}
+ARG snapshot_kosports
+ENV SNAPSHOT_KOSPORTS=${snapshot_kosports}
 
-ARG snapshotGLdc
-ENV SNAPSHOT_GLDC=${snapshotGLdc}
+ARG snapshot_gldc
+ENV SNAPSHOT_GLDC=${snapshot_gldc}
 
 RUN echo "KOS: $SNAPSHOT_KOS " && \
     echo "KOSPORTS : $SNAPSHOT_KOSPORTS" && \
     echo "GLDC : $SNAPSHOT_GLDC"
+
 
 # Installing prerequites
 RUN apk update && apk add --no-cache gawk patch bzip2 tar make gmp mpc mpfr-dev gettext wget \
@@ -48,11 +49,11 @@ RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
 
 # Kos-ports
 RUN echo "Checkout kos-ports" && source /opt/toolchains/dc/kos/environ.sh && \
-git clone --branch $snapshotKosPorts --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports && \
+git clone --branch $snapshot_kosports --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports && \
 cd /opt/toolchains/dc/kos-ports/libGL && \
 sed -i 's|https://gitlab.com/simulant/GLdc.git|https://gitlab.com/quentin.cartier.dev/GLdc.git|g' Makefile && \
 echo "new3" && \
-sed -i "/GIT_REPOSITORY/s|$|\nGIT_BRANCH = $snapshotGLdc|" Makefile
+sed -i "/GIT_REPOSITORY/s|$|\nGIT_BRANCH = $snapshot_gldc|" Makefile
 
 # (optional)If you want to compile libraries individually. In that case,
 # you need to comment the build_all.sh call part
