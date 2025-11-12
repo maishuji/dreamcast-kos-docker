@@ -2,12 +2,16 @@
 # and can be used to compile Dreamcast homebrew applications. The image is based on the dc-chain image
 
 # Build Arguments
+ARG dc_chain_version=stable
 ARG snapshot_kos=master
 ARG snapshot_kosports=master
 ARG snapshot_gldc=master
 
 # Base image : Kos toolchain. The tag corresponds to the version of the toolchain (profile) used.
-FROM maishuji/dc-chain:14.2.1-dev
+#FROM maishuji/dc-chain:14.2.1-dev
+# There is breaking changes in toolchain, so we need to use a new build of dc-chain 
+# (here upgraded to 14.3.0, but we could have stay on 14.2.1 and just rebuild it)
+FROM maishuji/dc-chain:${dc_chain_version}
 
 ARG snapshot_kos
 ENV SNAPSHOT_KOS=${snapshot_kos}

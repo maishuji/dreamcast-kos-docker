@@ -10,8 +10,11 @@ profiles can be found here :
 """
 
 import subprocess
-import argparse
+import click
 import os
+
+DEFAULT_DC_CHAIN_PROFILE = "stable"
+
 
 def build_dc_toolchains_image(username, dc_chain_profile):
     """
@@ -30,17 +33,24 @@ def build_dc_toolchains_image(username, dc_chain_profile):
         print(f"Error: Directory '{path_to_docker}' does not exist.")
         return
 
-    print("Building Docker image... This may take a while. dc_chain_profile: ", dc_chain_profile)
+    print(
+        "Building Docker image... This may take a while. dc_chain_profile: ",
+        dc_chain_profile,
+    )
     command = [
-        "docker", "build",
-        "--build-arg", f"dc_chain={dc_chain_profile}",
-        "--build-arg", "makejobs=4",
-        "-t", image_name,
-        "./docker/"
+        "docker",
+        "build",
+        "--build-arg",
+        f"dc_chain={dc_chain_profile}",
+        "--build-arg",
+        "makejobs=4",
+        "-t",
+        image_name,
+        "./docker/",
     ]
 
     print(f"Running command: {' '.join(command)}")
-    #return
+    # return
     try:
         print(f"Running command: {' '.join(command)}")
         subprocess.run(command, check=False, shell=False)
@@ -48,23 +58,23 @@ def build_dc_toolchains_image(username, dc_chain_profile):
     except subprocess.CalledProcessError as process_error:
         print(f"Error occurred while building the Docker image: {process_error}")
 
-def main():
+
+@click.command()
+@click.option("-u", "--username", required=True, type=str, help="Docker username")
+@click.option(
+    "-p",
+    "--profile",
+    required=False,
+    default="stable",
+    type=str,
+    help="dc-chain profile : e.g 15.0.1-dev",
+)
+def main(username, profile):
     """
     Main function to parse command line arguments and call the build function.
     """
-    parser = argparse.ArgumentParser(
-        description="Build a Docker image with specified username and version tag."
-    )
-    parser.add_argument("-u", "--username", type=str, help="Docker username")
-    parser.add_argument("-p",
-        "--profile",
-        type=str,
-        required=False,
-        default="stable",
-        help="dc-chain profile : e.g 15.0.1-dev"
-    )
-    args = parser.parse_args()
-    build_dc_toolchains_image(args.username, args.profile)
+    build_dc_toolchains_image(username, profile)
+
 
 if __name__ == "__main__":
     main()
