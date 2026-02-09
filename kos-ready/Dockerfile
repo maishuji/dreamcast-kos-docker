@@ -38,6 +38,7 @@ RUN apk update && apk add --no-cache gawk patch bzip2 tar make gmp mpc mpfr-dev 
 # Preparing kos directory
 RUN mkdir -p /opt/toolchains/dc && \
     chmod -R 755 /opt/toolchains/dc && \
+    mkdir -p /opt/toolchains/dc/bin && \
     chown -R $(id -u):$(id -g) /opt/toolchains/dc
 
 SHELL ["/bin/bash", "-c"]
@@ -105,9 +106,24 @@ RUN apk add --no-cache --upgrade \
     include-what-you-use \
     clang-extra-tools
 
+RUN apk add --no-cache --upgrade \
+    openssl-dev
+
+# SOIL requires a newer version of cmake than the one available in alpine 3.17
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4.tar.gz && \
+    tar -xzf cmake-3.31.4.tar.gz &&  \
+    cd cmake-3.31.4 && \
+    ./bootstrap --parallel=$(nproc) && \
+    make -j$(nproc) && \
+    make install && \
+    cd .. && \
+    rm -rf cmake-3.31.4 cmake-3.31.4.tar.gz \
+    hash -r
+
+
 RUN cd /opt/ && git clone https://github.com/paralin/soil.git && cd soil && \
-     mkdir build && cd build && cmake .. && make && \
-     mv libsoil.a /usr/lib/ && mv ../inc/SOIL /usr/include/ 
+    mkdir build && cd build && cmake .. && make && \
+    mv libsoil.a /usr/lib/ && mv ../inc/SOIL /usr/include/ 
 
 
 # Install dc-tool-ip

@@ -24,7 +24,7 @@ def build_dc_toolchains_image(username, dc_chain_profile):
         username (str): The username to be used as part of the image name.
         dc_chain_profile (str): Which dc_chain profile to build.
     """
-    path_to_docker = "/opt/toolchains/dc/kos/utils/dc-chain/"
+    path_to_docker = "/opt/toolchains/dc/kos/"
     image_name = f"{username}/dc-chain:{dc_chain_profile}"
     try:
         print(f"Changing directory to: {path_to_docker}")
@@ -41,12 +41,14 @@ def build_dc_toolchains_image(username, dc_chain_profile):
         "docker",
         "build",
         "--build-arg",
-        f"dc_chain={dc_chain_profile}",
+        f"profile={dc_chain_profile}",
         "--build-arg",
         "makejobs=4",
         "-t",
         image_name,
-        "./docker/",
+        "-f",
+        "./utils/dc-chain/docker/Dockerfile",
+        "."
     ]
 
     print(f"Running command: {' '.join(command)}")
