@@ -120,7 +120,7 @@ def choose_snapshot_kos():
     Returns:
         str: The selected snapshot_kos tag.
     """
-    years = ["2024", "2025", "master"]
+    years = ["2026", "2025", "master"]
     kos_year = prompt_choice(
         "\nPlease choose the year for the snapshot for Kos (or choose master for lastest):",
         years,
@@ -142,7 +142,7 @@ def choose_snapshot_kosports():
     Returns:
         str: The selected snapshot_kosports tag.
     """
-    years = ["2024", "2025", "master"]
+    years = ["2026", "2025", "master"]
     kosports_year = prompt_choice(
         "\nPlease choose the year for the snapshot for kos-ports (or choose master for lastest):",
         years,
