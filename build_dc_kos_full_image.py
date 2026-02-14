@@ -209,7 +209,14 @@ def print_settings(settings):
     default=None,
     help="kos-ports branch or tag to use instead of the interactive snapshot selection.",
 )
-def main(username, profile, kos_ports_branch):
+@click.option(
+    "-g",
+    "--gdb",
+    is_flag=True,
+    default=False,
+    help="Build with GDB support",
+)
+def main(username, profile, kos_ports_branch, gdb):
     """Main function to parse command line arguments and call the build function."""
 
     snapshot_kos = choose_snapshot_kos()
@@ -218,6 +225,11 @@ def main(username, profile, kos_ports_branch):
 
     # Currently the toolchain tag is hardcoded to 14.3.0-dev-<snapshot_kos>
     tag = profile + "-"
+
+    # Add gdb suffix if building with GDB support
+    if gdb:
+        tag += "gdb-"
+
     if snapshot_kos == "master":
         tag += "latest"
     else:
@@ -232,9 +244,14 @@ def main(username, profile, kos_ports_branch):
         # it sould be initially release/ddmmyy. E.g release/10JAN24)
         tag += f"-gl{snapshot_gldc[-7:].lower()}"
 
+    # Use dc-chain-gdb image if gdb flag is set, otherwise use dc-chain
+    base_image = "dc-chain-gdb" if gdb else "dc-chain"
+
     docker_build_command = [
         "docker",
         "build",
+        "--build-arg",
+        f"base_image={base_image}",
         "--build-arg",
         f"dc_chain_version={profile}",
         "--build-arg",

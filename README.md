@@ -27,10 +27,10 @@ Choose the script based on what you want to build:
 
 | Script | Purpose | Output image | Default profile |
 | --- | --- | --- | --- |
-| [`build_dc_toolchain_image.py`](build_dc_toolchain_image.py) | Build the compiler toolchain to use as a base image. | `<username>/dc-chain:<profile>` | `stable` |
+| [`build_dc_toolchain_image.py`](build_dc_toolchain_image.py) | Build the compiler toolchain to use as a base image. | `<username>/dc-chain:<profile>`; also `<username>/dc-chain-gdb:<profile>` with `--use-gdb` | `stable` |
 | [`build_dc_kos_full_image.py`](build_dc_kos_full_image.py) | Build the development image with KOS, kos-ports, GLdc, and tools. | `<username>/dc-kos-image:<generated-tag>` | `15.2.1-dev` |
 
-For a development environment, start with the **ready-to-use image** instructions below. Building the toolchain yourself is optional: the full-image Dockerfile uses `maishuji/dc-chain:15.2.1-dev` by default.
+For a development environment, start with the **ready-to-use image** instructions below. Building the toolchain yourself is optional: the full-image script selects `maishuji/dc-chain:15.2.1-dev` by default. Direct Docker builds default to `maishuji/dc-chain:stable`.
 
 ### Prerequisites and Python Setup
 
@@ -80,6 +80,7 @@ uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname --kos-p
 | --- | --- | --- |
 | `-u`, `--username` | Yes | Namespace for the resulting `dc-kos-image` image. |
 | `-p`, `--profile` | No | Base toolchain image tag; defaults to `15.2.1-dev`. |
+| `-g`, `--gdb` | No | Use the `dc-chain-gdb` base image and add `gdb-` after the profile in the output tag. |
 | `--kos-ports-branch` | No | kos-ports branch or tag to check out. When omitted, use the interactive snapshot menu. |
 | `--help` | No | Display command-line help and exit. |
 
@@ -96,7 +97,7 @@ The script remains interactive for KOS, GLdc, and confirmation. It prints the co
 
 `--kos-ports-branch` is passed unchanged to the existing Docker build argument `snapshot_kosports`. For a direct build, use `docker build --build-arg snapshot_kosports=feature/my-branch -t yourname/dc-kos-image:custom ./kos-ready/`. Omitting that build argument uses `master`.
 
-**Selecting the base image:** `--profile` is passed as the Docker build argument `dc_chain_version`. The [`kos-ready/Dockerfile`](kos-ready/Dockerfile) uses `FROM maishuji/dc-chain:${dc_chain_version}`, so the selected image tag must be available locally or from the registry. `--username` only names the output image; it does not change this base-image namespace.
+**Selecting the base image:** `--profile` is passed as the Docker build argument `dc_chain_version`. The [`kos-ready/Dockerfile`](kos-ready/Dockerfile) uses `FROM maishuji/${base_image}:${dc_chain_version}`, with `base_image=dc-chain` normally or `base_image=dc-chain-gdb` when `--gdb` is supplied. The selected image tag must be available locally or from the registry. `--username` only names the output image; it does not change this base-image namespace.
 
 ### Build the Toolchain (Optional)
 
@@ -124,16 +125,21 @@ uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 15.
 | --- | --- | --- |
 | `-u`, `--username` | Yes | Namespace for the resulting `dc-chain` image. |
 | `-p`, `--profile` | No | Toolchain build profile and output image tag; defaults to `stable`. |
+| `-g`, `--use-gdb` | No | Also build `<username>/dc-chain-gdb:<profile>` using [`dc-chain/Dockerfile2`](dc-chain/Dockerfile2). |
 | `--help` | No | Display command-line help and exit. |
 
-This script starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. A successful build produces `<username>/dc-chain:<profile>`.
+This script starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. A successful build produces `<username>/dc-chain:<profile>`. With `--use-gdb`, it then builds GDB on top of that image, using the same KallistiOS checkout and profile:
+
+```sh
+uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p stable --use-gdb
+```
 
 ### Use Your Own Toolchain in the Full Image
 
 To use the toolchain image you built, change the base-image line in [`kos-ready/Dockerfile`](kos-ready/Dockerfile) to your namespace:
 
 ```dockerfile
-FROM yourname/dc-chain:${dc_chain_version}
+FROM yourname/${base_image}:${dc_chain_version}
 ```
 
 Then run the full-image script with the same profile used for the toolchain build. For example, after building `yourname/dc-chain:stable`:
@@ -142,6 +148,8 @@ Then run the full-image script with the same profile used for the toolchain buil
 uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname -p stable
 ```
 
+If you also built `yourname/dc-chain-gdb:stable`, add `--gdb` to the full-image command to use it.
+
 The scripts have different defaults, so pass `--profile` explicitly when connecting the two builds. The full-image Dockerfile uses Alpine's `apk` package manager and expects the KOS toolchain layout; a custom base image must remain compatible with those requirements.
 
 ### Generated Image Tags
@@ -149,6 +157,7 @@ The scripts have different defaults, so pass `--profile` explicitly when connect
 The full-image script generates tags using these rules:
 
 - Start with `<profile>-<kos-snapshot>`, lowercasing the KOS tag. If KOS is `master`, use `<profile>-latest`.
+- With `--gdb`, insert `gdb-` immediately after `<profile>-`; for example, `stable-gdb-latest` when KOS is `master`.
 - Append `-kp<kos-ports-ref>` in lowercase when kos-ports is not `master`. Characters outside `a-z`, `0-9`, `_`, `.`, and `-` are replaced with `-` in the image tag (for example, `feature/my-branch` becomes `kpfeature-my-branch`); the Git branch or tag itself is passed unchanged.
 - Append `-gl<gldc-snapshot>` when GLdc is not `master`, using the last seven characters of the branch name in lowercase (for example, `release/01MAR25` becomes `gl01mar25`).
 
@@ -200,6 +209,4 @@ For toolchain builds, check Docker's output and confirm the resulting image with
 
 ## Limitations
 
-Currently, the following features are not yet implemented:
-
-- Debugging functionalities.
+GDB can be included with the flags above. Configuring a debugging session is not covered by these build scripts.

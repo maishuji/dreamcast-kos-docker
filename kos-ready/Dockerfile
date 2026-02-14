@@ -2,14 +2,16 @@
 # and can be used to compile Dreamcast homebrew applications. The image is based on the dc-chain image
 
 # Build Arguments
-ARG dc_chain_version=15.2.1-dev
+ARG base_image=dc-chain
+ARG dc_chain_version=stable
 ARG snapshot_kos=master
 ARG snapshot_kosports=master
 ARG snapshot_gldc=master
 
 # Base image : Kos toolchain. The tag corresponds to the version of the toolchain (profile) used.
+# Can be either dc-chain or dc-chain-gdb depending on build requirements
 #FROM maishuji/kos-chain:15.2.1-dev
-FROM maishuji/dc-chain:${dc_chain_version}
+FROM maishuji/${base_image}:${dc_chain_version}
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.11 /uv /uvx /usr/local/bin/
 
