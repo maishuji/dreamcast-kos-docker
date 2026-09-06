@@ -29,6 +29,7 @@ RUN apk --update add --no-cache \
         elfutils-dev \
         libjpeg-turbo-dev \
         libpng-dev \
+        linux-headers \
         python3 \
         && rm -rf /var/cache/apk/*
 
