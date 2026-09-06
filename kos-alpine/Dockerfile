@@ -1,4 +1,4 @@
-FROM maishuji/kos-chain:15.2.1-dev
+FROM maishuji/dc-chain:15.2.1-dev
 
 RUN apk update
 

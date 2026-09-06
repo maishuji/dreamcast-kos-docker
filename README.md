@@ -38,7 +38,7 @@ python ./build_dc_toolchain_image.py -u <your-docker-name> -p <toolchain-profile
 
 ### 2. Build a Ready-to-Use Image
 
-**Note:** *By default, the ready-to-use image is based on `maishuji/kos-chain:15.2.1-dev`, available on Docker Hub. This means you do not need to build the toolchain unless you want to customize it. If customization is needed, modify the `Dockerfile` accordingly.*
+**Note:** *By default, the ready-to-use image is based on `maishuji/dc-chain:15.2.1-dev`, available on Docker Hub. This means you do not need to build the toolchain unless you want to customize it. If customization is needed, modify the `Dockerfile` accordingly.*
 
 To create the ready-to-use KOS image, run the following script:
 
