@@ -6,12 +6,13 @@ usage: build_dc_toolchain_image.py [-h] [-u USERNAME] [-p PROFILE]
     USERNAME : the docker username you want to use.
     PROFILE : e.g 15.0.1-dev
 profiles can be found here :
-  https://github.com/KallistiOS/KallistiOS/tree/master/utils/dc-chain/profiles
+  https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles
 """
 
-import subprocess
-import click
 import os
+import subprocess
+
+import click
 
 DEFAULT_DC_CHAIN_PROFILE = "stable"
 
@@ -47,7 +48,7 @@ def build_dc_toolchains_image(username, dc_chain_profile):
         "-t",
         image_name,
         "-f",
-        "./utils/dc-chain/docker/Dockerfile",
+        "./utils/kos-chain/docker/Dockerfile",
         "."
     ]
 
@@ -69,7 +70,7 @@ def build_dc_toolchains_image(username, dc_chain_profile):
     required=False,
     default="stable",
     type=str,
-    help="dc-chain profile : e.g 15.0.1-dev",
+    help="dc-chain profile : e.g 15.2.1-dev",
 )
 def main(username, profile):
     """
@@ -79,4 +80,5 @@ def main(username, profile):
 
 
 if __name__ == "__main__":
+    # pylint: disable=no-value-for-parameter
     main()

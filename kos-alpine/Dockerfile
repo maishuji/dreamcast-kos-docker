@@ -1,4 +1,4 @@
-FROM maishuji/dc-chain:14.2.1-dev
+FROM maishuji/dc-chain:15.2.1-dev
 
 RUN apk update
 
