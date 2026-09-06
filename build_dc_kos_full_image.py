@@ -3,9 +3,12 @@ This script is used to build a docker image with ready to use for Dreamcast deve
 """
 
 import subprocess
-import click
 import sys
+
+import click
 import requests
+
+REQUEST_TIMEOUT = 30
 
 
 # Function to filter tags that end with '24'
@@ -39,7 +42,7 @@ def fetch_snapshot_kos_tags(year):
         <str>[]: List of tags that end with the last two digits of the specified year.
     """
     url = "https://api.github.com/repos/maishuji/KallistiOS/git/refs/tags"
-    response = requests.get(url)
+    response = requests.get(url, timeout=REQUEST_TIMEOUT)
     if response.status_code == 200:
         tags = [ref["ref"].replace("refs/tags/", "") for ref in response.json()]
         return filter_tags_by_year(tags, year)
@@ -58,7 +61,7 @@ def fetch_snapshot_kosports_tags(year):
         <str>[]: The list of tags that end with the last two digits of the specified year.
     """
     url = "https://api.github.com/repos/maishuji/kos-ports/git/refs/tags"
-    response = requests.get(url)
+    response = requests.get(url, timeout=REQUEST_TIMEOUT)
     if response.status_code == 200:
         tags = [ref["ref"].replace("refs/tags/", "") for ref in response.json()]
         return filter_tags_by_year(tags, year)
@@ -74,7 +77,7 @@ def fetch_release_branches_gldc():
         <str>[]: List of release branches or master branch.
     """
     url = "https://gitlab.com/api/v4/projects/quentin.cartier.dev%2FGLdc/repository/branches"
-    response = requests.get(url)
+    response = requests.get(url, timeout=REQUEST_TIMEOUT)
     if response.status_code == 200:
         branches = [branch["name"] for branch in response.json()]
         # Only suggest the release branches or the master branch
@@ -171,32 +174,21 @@ def choose_snapshot_gldc():
     return snapshot_gldc
 
 
-def print_settings(
-    username,
-    profile,
-    snapshot_kos,
-    snapshot_kosports,
-    snapshot_gldc,
-    docker_build_command,
-):
+def print_settings(settings):
     """Display the settings for the Docker build command.
 
     Args:
-        args (_type_): Args from the command line.
-        snapshot_kos (str): Chosen snapshot for kos.
-        snapshot_kosports (str): Chosen snapshot for kos-ports.
-        snapshot_gldc (str): Chosen snapshot for GLdc.
-        docker_build_command (str): Command to build the Docker image.
+        settings (dict): Docker build settings.
     """
     # Build the Docker image with the selected options
     print("\n----------> Print settings <----------")
     print("Building Docker image with the following options:")
-    print(f"Username:           \t\t {username}")
-    print(f"Toolchain profile   \t\t {profile}")
-    print(f"snapshot_kos:        \t\t {snapshot_kos}")
-    print(f"snapshot_kos-ports:  \t\t {snapshot_kosports}")
-    print(f"snapshot_gldc branch:\t\t {snapshot_gldc}")
-    print("\nRunning docker command:\n\t", " ".join(docker_build_command))
+    print(f"Username:           \t\t {settings['username']}")
+    print(f"Toolchain profile   \t\t {settings['profile']}")
+    print(f"snapshot_kos:        \t\t {settings['snapshot_kos']}")
+    print(f"snapshot_kos-ports:  \t\t {settings['snapshot_kosports']}")
+    print(f"snapshot_gldc branch:\t\t {settings['snapshot_gldc']}")
+    print("\nRunning docker command:\n\t", " ".join(settings["docker_build_command"]))
     print("--------------------------------------")
 
 
@@ -249,12 +241,14 @@ def main(username, profile):
     ]
 
     print_settings(
-        username,
-        profile,
-        snapshot_kos,
-        snapshot_kosports,
-        snapshot_gldc,
-        docker_build_command,
+        {
+            "username": username,
+            "profile": profile,
+            "snapshot_kos": snapshot_kos,
+            "snapshot_kosports": snapshot_kosports,
+            "snapshot_gldc": snapshot_gldc,
+            "docker_build_command": docker_build_command,
+        }
     )
 
     confirm_choices = ["Yes", "No"]
@@ -268,4 +262,5 @@ def main(username, profile):
 
 
 if __name__ == "__main__":
+    # pylint: disable=no-value-for-parameter
     main()

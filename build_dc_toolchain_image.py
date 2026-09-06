@@ -9,9 +9,10 @@ profiles can be found here :
   https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles
 """
 
-import subprocess
-import click
 import os
+import subprocess
+
+import click
 
 DEFAULT_DC_CHAIN_PROFILE = "stable"
 
@@ -79,4 +80,5 @@ def main(username, profile):
 
 
 if __name__ == "__main__":
+    # pylint: disable=no-value-for-parameter
     main()
