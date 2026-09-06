@@ -207,8 +207,8 @@ def print_settings(
     "--profile",
     required=False,
     type=str,
-    default="stable",
-    help="dc-chain profile : e.g 15.0.1-dev",
+    default="15.2.1-dev",
+    help="dc-chain profile : e.g 15.2.1-dev",
 )
 def main(username, profile):
     """Main function to parse command line arguments and call the build function."""

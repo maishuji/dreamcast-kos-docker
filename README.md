@@ -9,7 +9,7 @@ This repository provides tools for creating a ready-to-use Docker image for Drea
 The Docker image includes several key components:
 
 - **dc-chain**: The toolchain. A Dockerfile exists in the KOS repository to build a Docker image.
-  - [KallistiOS dc-chain Dockerfile](https://github.com/KallistiOS/KallistiOS/blob/master/utils/dc-chain/docker/Dockerfile)
+  - [KallistiOS dc-chain Dockerfile](https://github.com/KallistiOS/KallistiOS/blob/master/utils/kos-chain/docker/Dockerfile)
 - **KallistiOS (KOS)**: The Dreamcast SDK.
   - [KallistiOS GitHub](https://github.com/KallistiOS)
 - **kos-ports**: Libraries ported for KOS on the Sega Dreamcast.
@@ -32,13 +32,13 @@ python ./build_dc_toolchain_image.py -u <your-docker-name> -p <toolchain-profile
 ```
 
 - **`toolchain-profiles`**: The list of available profiles can be found here:  
-  [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/dc-chain/profiles)
+  [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles)
 - **Dockerfile Requirement**: The script expects that you have cloned the KOS repository at `/opt/toolchains/dc/kos`, as it relies on the Dockerfile provided here:  
-  [KOS dc-chain Dockerfile](https://github.com/KallistiOS/KallistiOS/tree/master/utils/dc-chain/docker)
+  [KOS dc-chain Dockerfile](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/docker)
 
 ### 2. Build a Ready-to-Use Image
 
-**Note:** *By default, the ready-to-use image is based on `maishuji/dc-chain:14.2.1-dev`, available on Docker Hub. This means you do not need to build the toolchain unless you want to customize it. If customization is needed, modify the `Dockerfile` accordingly.*
+**Note:** *By default, the ready-to-use image is based on `maishuji/kos-chain:15.2.1-dev`, available on Docker Hub. This means you do not need to build the toolchain unless you want to customize it. If customization is needed, modify the `Dockerfile` accordingly.*
 
 To create the ready-to-use KOS image, run the following script:
 
