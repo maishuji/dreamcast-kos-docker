@@ -25,8 +25,9 @@ RUN echo "KOS: $SNAPSHOT_KOS " && \
     echo "GLDC : $SNAPSHOT_GLDC"
 
 
-# Installing prerequites
-RUN apk update && apk add --no-cache gawk patch bzip2 tar make gmp mpc mpfr-dev gettext wget \
+# Installing prerequisites with retries for transient repository/DNS failures.
+COPY --chmod=755 apk-retry.sh /usr/local/bin/apk-retry
+RUN apk-retry add --no-cache gawk patch bzip2 tar make gmp mpc mpfr-dev gettext wget \
     libelf texinfo bison flex sed git diffutils curl jpeg \
     libpng-dev python3 pkgconfig libisofs-dev meson ruby-rake \
     py3-pip py3-setuptools pipx\
@@ -93,7 +94,7 @@ RUN source /opt/toolchains/dc/kos/environ.sh && \
     cp builddir/mkdcdisc /usr/local/bin/ && \
     ln -s  /opt/toolchains/dc/mkdcdisc /opt/mkdcdisc
 
-RUN apk add --no-cache --upgrade \
+RUN apk-retry add --no-cache --upgrade \
     freetype-dev \
     mesa-dev \
     glew-dev \
@@ -104,7 +105,7 @@ RUN apk add --no-cache --upgrade \
     include-what-you-use \
     clang-extra-tools
 
-RUN apk add --no-cache --upgrade \
+RUN apk-retry add --no-cache --upgrade \
     openssl-dev
 
 # SOIL requires a newer version of cmake than the one available in alpine 3.17
