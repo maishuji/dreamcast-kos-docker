@@ -23,61 +23,164 @@ The Docker image includes several key components:
 
 ## How to Use
 
-### 1. Build the Toolchain
+Choose the script based on what you want to build:
 
-Run the following command to build the toolchain:
+| Script | Purpose | Output image | Default profile |
+| --- | --- | --- | --- |
+| [`build_dc_toolchain_image.py`](build_dc_toolchain_image.py) | Build the compiler toolchain to use as a base image. | `<username>/dc-chain:<profile>` | `stable` |
+| [`build_dc_kos_full_image.py`](build_dc_kos_full_image.py) | Build the development image with KOS, kos-ports, GLdc, and tools. | `<username>/dc-kos-image:<generated-tag>` | `15.2.1-dev` |
 
-```sh
-python ./build_dc_toolchain_image.py -u <your-docker-name> -p <toolchain-profiles>
-```
+For a development environment, start with the **ready-to-use image** instructions below. Building the toolchain yourself is optional: the full-image Dockerfile uses `maishuji/dc-chain:15.2.1-dev` by default.
 
-- **`toolchain-profiles`**: The list of available profiles can be found here:  
-  [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles)
-- **Dockerfile Requirement**: The script expects that you have cloned the KOS repository at `/opt/toolchains/dc/kos`, as it relies on the Dockerfile provided here:  
-  [KOS dc-chain Dockerfile](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/docker)
+### Prerequisites and Python Setup
 
-### 2. Build a Ready-to-Use Image
+- Install Python 3 with virtual environment support, and Docker with a running daemon. `docker info` should succeed for your user.
+- Allow network access for Python dependencies, Docker images, packages, and source repositories. The full-image script also queries GitHub and GitLab for snapshot choices.
+- To build the toolchain yourself, install Git and prepare a local KallistiOS checkout as described below.
 
-**Note:** *By default, the ready-to-use image is based on `maishuji/dc-chain:15.2.1-dev`, available on Docker Hub. This means you do not need to build the toolchain unless you want to customize it. If customization is needed, modify the `Dockerfile` accordingly.*
-
-To create the ready-to-use KOS image, run the following script:
+Run these commands from the root of this repository:
 
 ```sh
-python ./build_dc_kos_full_image.py -u <your-docker-name>
+python3 -m venv venv
+. venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-This script will prompt you to select specific snapshots for `kos`, `kos-ports`, and `GLdc`.
+Activate the virtual environment again when opening a new terminal. The examples below use `python` from this environment and `yourname` as a placeholder for your Docker username or image namespace.
 
----
+Both scripts create local images. They do not log in to a registry or push images.
 
-## Useful Commands
+### Build a Ready-to-Use Image
+
+Run this script **from the root of this repository**, because it uses `./kos-ready/` as the Docker build context. A local KallistiOS checkout is not required; the Dockerfile clones the sources inside the image.
+
+```sh
+# Use the default toolchain profile, 15.2.1-dev.
+python ./build_dc_kos_full_image.py --username yourname
+
+# Or select a toolchain image tag explicitly.
+python ./build_dc_kos_full_image.py -u yourname -p 15.2.1-dev
+
+# Optionally select a kos-ports branch and skip its snapshot menu.
+python ./build_dc_kos_full_image.py -u yourname --kos-ports-branch feature/my-branch
+```
+
+| Option | Required | Meaning |
+| --- | --- | --- |
+| `-u`, `--username` | Yes | Namespace for the resulting `dc-kos-image` image. |
+| `-p`, `--profile` | No | Base toolchain image tag; defaults to `15.2.1-dev`. |
+| `--kos-ports-branch` | No | kos-ports branch or tag to check out. When omitted, use the interactive snapshot menu. |
+| `--help` | No | Display command-line help and exit. |
+
+Enter the **number** beside each choice when prompted:
+
+1. **KOS:** choose `2026`, `2025`, or `master`. Choosing a year fetches matching snapshot tags and prompts you to select one. Choosing `master` skips the snapshot selection.
+2. **kos-ports:** choose a year and snapshot, or `master`, in the same way. This step is skipped when `--kos-ports-branch` is supplied.
+3. **GLdc:** choose one of the fetched `release/` branches or `master`.
+4. **Confirmation:** review the selected versions and the printed Docker command. Enter `1` for **Yes** to build or `2` for **No** to cancel. Cancellation exits with status 1.
+
+The snapshot menus use the forks configured in the script: `maishuji/KallistiOS`, `maishuji/kos-ports`, and `quentin.cartier.dev/GLdc`. The KOS and kos-ports year menus currently list only 2026 and 2025. `master` selects the repository's moving branch, so later builds can use different source revisions.
+
+The script remains interactive for KOS, GLdc, and confirmation. It prints the complete `docker build` command before confirmation; you can save that command to reuse the same selections without the menus.
+
+`--kos-ports-branch` is passed unchanged to the existing Docker build argument `snapshot_kosports`. For a direct build, use `docker build --build-arg snapshot_kosports=feature/my-branch -t yourname/dc-kos-image:custom ./kos-ready/`. Omitting that build argument uses `master`.
+
+**Selecting the base image:** `--profile` is passed as the Docker build argument `dc_chain_version`. The [`kos-ready/Dockerfile`](kos-ready/Dockerfile) uses `FROM maishuji/dc-chain:${dc_chain_version}`, so the selected image tag must be available locally or from the registry. `--username` only names the output image; it does not change this base-image namespace.
+
+### Build the Toolchain (Optional)
+
+The toolchain script expects a KallistiOS checkout at the fixed path `/opt/toolchains/dc/kos`. It changes into that directory and builds with `utils/kos-chain/docker/Dockerfile`, using the checkout root as the build context. There is no command-line option to change this path.
+
+If the checkout does not already exist, create it with Git. Ensure your user can create directories under `/opt/toolchains/dc` first:
+
+```sh
+git clone https://github.com/KallistiOS/KallistiOS.git /opt/toolchains/dc/kos
+```
+
+The checkout must contain `utils/kos-chain/docker/Dockerfile` and the selected profile under `utils/kos-chain/profiles`. Refer to the profiles in your checkout; the upstream [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles) are also linked for reference.
+
+From this repository, run:
+
+```sh
+# Use the default profile: creates yourname/dc-chain:stable.
+python ./build_dc_toolchain_image.py --username yourname
+
+# Choose a profile supported by your KallistiOS checkout.
+python ./build_dc_toolchain_image.py -u yourname -p 15.2.1-dev
+```
+
+| Option | Required | Meaning |
+| --- | --- | --- |
+| `-u`, `--username` | Yes | Namespace for the resulting `dc-chain` image. |
+| `-p`, `--profile` | No | Toolchain build profile and output image tag; defaults to `stable`. |
+| `--help` | No | Display command-line help and exit. |
+
+This script starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. A successful build produces `<username>/dc-chain:<profile>`.
+
+### Use Your Own Toolchain in the Full Image
+
+To use the toolchain image you built, change the base-image line in [`kos-ready/Dockerfile`](kos-ready/Dockerfile) to your namespace:
+
+```dockerfile
+FROM yourname/dc-chain:${dc_chain_version}
+```
+
+Then run the full-image script with the same profile used for the toolchain build. For example, after building `yourname/dc-chain:stable`:
+
+```sh
+python ./build_dc_kos_full_image.py -u yourname -p stable
+```
+
+The scripts have different defaults, so pass `--profile` explicitly when connecting the two builds. The full-image Dockerfile uses Alpine's `apk` package manager and expects the KOS toolchain layout; a custom base image must remain compatible with those requirements.
+
+### Generated Image Tags
+
+The full-image script generates tags using these rules:
+
+- Start with `<profile>-<kos-snapshot>`, lowercasing the KOS tag. If KOS is `master`, use `<profile>-latest`.
+- Append `-kp<kos-ports-ref>` in lowercase when kos-ports is not `master`. Characters outside `a-z`, `0-9`, `_`, `.`, and `-` are replaced with `-` in the image tag (for example, `feature/my-branch` becomes `kpfeature-my-branch`); the Git branch or tag itself is passed unchanged.
+- Append `-gl<gldc-snapshot>` when GLdc is not `master`, using the last seven characters of the branch name in lowercase (for example, `release/01MAR25` becomes `gl01mar25`).
+
+Examples below illustrate the naming rules; available snapshots depend on the configured repositories:
+
+| Profile | KOS | kos-ports | GLdc | Generated tag |
+| --- | --- | --- | --- | --- |
+| `15.2.1-dev` | `master` | `master` | `master` | `15.2.1-dev-latest` |
+| `15.2.1-dev` | `01MAR25` | `01MAR25` | `release/01MAR25` | `15.2.1-dev-01mar25-kp01mar25-gl01mar25` |
+| `stable` | `01MAR25` | `master` | `master` | `stable-01mar25` |
+| `15.2.1-dev` | `master` | `feature/my-branch` | `master` | `15.2.1-dev-latest-kpfeature-my-branch` |
 
 ### Run the Container
 
-```sh
-# Check available images
-docker image ls | grep "dc-kos-image"
-
-# Start a container from the chosen image
-docker run -it <docker-name>/dc-kos-image:<version-tag>
-```
-
-### Version Tag Format
-
-The version tag follows this format:
-
-```
-<gcc-profile>-<DDMMYY-kos-snapshot>-kp<DDMMYY-kosports-snapshot>-gl<DDMMYY-GLdc-snapshot>
-```
-
-- `kp` and `gl` versioning appear only when a specific snapshot is used.
-- Example usage:
+Find the image name and tag after the build:
 
 ```sh
-docker run -it maishuji/dc-kos-image:14.2.1-dev-01mar25-kp01mar25-gl01mar25 bash
+docker image ls yourname/dc-kos-image
 ```
 
-(This image is available on Docker Hub.)
+For example, after using profile `15.2.1-dev` and selecting `master` for all three components:
+
+```sh
+docker run --rm -it yourname/dc-kos-image:15.2.1-dev-latest bash -l
+```
+
+Use the tag from your own build. The login shell (`bash -l`) loads `/etc/profile`, where the Dockerfile sources `/opt/toolchains/dc/kos/environ.sh` to configure the development environment.
+
+### Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| `ModuleNotFoundError` for `click` or `requests` | Activate `venv` and run `python -m pip install -r requirements.txt`. |
+| Docker is missing or cannot connect to its daemon | Check that Docker is installed, running, and accessible with `docker info`. |
+| `/opt/toolchains/dc/kos/` does not exist | Prepare the KallistiOS checkout at that exact path before running the toolchain script. |
+| Docker cannot find the toolchain Dockerfile or profile | Check that your KallistiOS checkout contains the expected `utils/kos-chain/` files. |
+| Docker cannot find `./kos-ready/` | Run the full-image script from this repository's root. |
+| The base image cannot be found or pulled | Check the profile tag and the `FROM` namespace in `kos-ready/Dockerfile`, especially when using your own toolchain. |
+| `apk` reports `DNS: transient error` followed by `openssl-dev (no such package)` | The Alpine package indexes could not be fetched. Package operations retry up to five times, waiting 5, 10, 15, and 20 seconds between attempts. If failures persist, check DNS and repository access from Docker containers, correct Docker's DNS/network configuration, and rerun the build. |
+| The full-image script reports `Docker build failed` | Check Docker's output above the message for the failing step. The script exits with an error without a Python traceback. |
+| Snapshot retrieval fails or a snapshot menu is empty | Check access to GitHub/GitLab and whether the selected year has tags. If the KOS or kos-ports menu has no choices, press `Ctrl+C` and rerun with a different year or `master`. |
+
+For toolchain builds, check Docker's output and confirm the resulting image with `docker image inspect yourname/dc-chain:stable` (substitute your profile). The toolchain script currently prints a success message even when the Docker build command exits with an error.
 
 ---
 

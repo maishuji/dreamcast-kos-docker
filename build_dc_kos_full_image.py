@@ -2,6 +2,7 @@
 This script is used to build a docker image with ready to use for Dreamcast development.
 """
 
+import re
 import subprocess
 import sys
 
@@ -202,11 +203,17 @@ def print_settings(settings):
     default="15.2.1-dev",
     help="dc-chain profile : e.g 15.2.1-dev",
 )
-def main(username, profile):
+@click.option(
+    "--kos-ports-branch",
+    type=str,
+    default=None,
+    help="kos-ports branch or tag to use instead of the interactive snapshot selection.",
+)
+def main(username, profile, kos_ports_branch):
     """Main function to parse command line arguments and call the build function."""
 
     snapshot_kos = choose_snapshot_kos()
-    snapshot_kosports = choose_snapshot_kosports()
+    snapshot_kosports = kos_ports_branch or choose_snapshot_kosports()
     snapshot_gldc = choose_snapshot_gldc()
 
     # Currently the toolchain tag is hardcoded to 14.3.0-dev-<snapshot_kos>
@@ -216,9 +223,10 @@ def main(username, profile):
     else:
         tag += f"{snapshot_kos.lower()}"
 
-    # We only specify in the tag if using a specific tag
+    # Include a specific kos-ports ref, replacing characters Docker tags cannot use.
     if snapshot_kosports != "master":
-        tag += f"-kp{snapshot_kosports.lower()}"
+        kosports_tag = re.sub(r"[^a-z0-9_.-]", "-", snapshot_kosports.lower())
+        tag += f"-kp{kosports_tag}"
     if snapshot_gldc != "master":
         # Only extract the ddmmyy part (as it is a branch,
         # it sould be initially release/ddmmyy. E.g release/10JAN24)
@@ -255,7 +263,13 @@ def main(username, profile):
     if prompt_choice("Do you want to continue ?", confirm_choices) == "Yes":
         print("Running ...")
         # Execute the Docker build command
-        subprocess.run(docker_build_command, check=True)
+        try:
+            subprocess.run(docker_build_command, check=True)
+        except subprocess.CalledProcessError as process_error:
+            raise click.ClickException(
+                f"Docker build failed (exit code {process_error.returncode}). "
+                "See the Docker output above for details."
+            ) from process_error
     else:
         print("Operation cancelled ... ")
         sys.exit(1)
