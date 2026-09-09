@@ -1,0 +1,17 @@
+[project]
+name = "dreamcast-kos-docker"
+version = "0.1.0"
+description = "Build Docker images for Dreamcast development with KallistiOS."
+requires-python = ">=3.11"
+dependencies = [
+    "click==8.3.0",
+    "requests==2.32.4",
+]
+
+[dependency-groups]
+dev = [
+    "pylint==4.0.8",
+]
+
+[tool.uv]
+package = false

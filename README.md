@@ -34,19 +34,30 @@ For a development environment, start with the **ready-to-use image** instruction
 
 ### Prerequisites and Python Setup
 
-- Install Python 3 with virtual environment support, and Docker with a running daemon. `docker info` should succeed for your user.
+- Install Python 3.11 or newer, [uv](https://docs.astral.sh/uv/getting-started/installation/), and Docker with a running daemon. `docker info` should succeed for your user. CI uses Python 3.11; CI and the Dockerfiles pin uv to `0.12.11`.
 - Allow network access for Python dependencies, Docker images, packages, and source repositories. The full-image script also queries GitHub and GitLab for snapshot choices.
 - To build the toolchain yourself, install Git and prepare a local KallistiOS checkout as described below.
 
 Run these commands from the root of this repository:
 
 ```sh
-python3 -m venv venv
-. venv/bin/activate
-python -m pip install -r requirements.txt
+uv sync --locked --no-dev
 ```
 
-Activate the virtual environment again when opening a new terminal. The examples below use `python` from this environment and `yourname` as a placeholder for your Docker username or image namespace.
+Alternatively, run `make create-env`. uv creates `.venv` and installs the build scripts' dependencies from `uv.lock`.
+
+Run scripts with `uv run --locked --no-dev`; no environment activation is required. If you previously activated `venv`, run `deactivate` before using the new setup. The examples below use `yourname` as a placeholder for your Docker username or image namespace.
+
+For development, install the dependencies and the pinned Pylint version, then run lint:
+
+```sh
+make create-dev-env
+make lint
+```
+
+`make create-dev-env` runs `uv sync --locked`, which also installs the `dev` dependency group. `make lint` runs Pylint through `uv run --locked`. CI runs the same targets.
+
+Dependencies are declared in `pyproject.toml`, and `uv.lock` pins their resolved versions, including transitive dependencies. Use `uv add <package>` or `uv add --dev <package>` to add dependencies, and commit both files together. The `--locked` flag makes setup fail if the lockfile needs updating; run `uv lock` after editing dependencies manually.
 
 Both scripts create local images. They do not log in to a registry or push images.
 
@@ -56,13 +67,13 @@ Run this script **from the root of this repository**, because it uses `./kos-rea
 
 ```sh
 # Use the default toolchain profile, 15.2.1-dev.
-python ./build_dc_kos_full_image.py --username yourname
+uv run --locked --no-dev python ./build_dc_kos_full_image.py --username yourname
 
 # Or select a toolchain image tag explicitly.
-python ./build_dc_kos_full_image.py -u yourname -p 15.2.1-dev
+uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname -p 15.2.1-dev
 
 # Optionally select a kos-ports branch and skip its snapshot menu.
-python ./build_dc_kos_full_image.py -u yourname --kos-ports-branch feature/my-branch
+uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname --kos-ports-branch feature/my-branch
 ```
 
 | Option | Required | Meaning |
@@ -103,10 +114,10 @@ From this repository, run:
 
 ```sh
 # Use the default profile: creates yourname/dc-chain:stable.
-python ./build_dc_toolchain_image.py --username yourname
+uv run --locked --no-dev python ./build_dc_toolchain_image.py --username yourname
 
 # Choose a profile supported by your KallistiOS checkout.
-python ./build_dc_toolchain_image.py -u yourname -p 15.2.1-dev
+uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 15.2.1-dev
 ```
 
 | Option | Required | Meaning |
@@ -128,7 +139,7 @@ FROM yourname/dc-chain:${dc_chain_version}
 Then run the full-image script with the same profile used for the toolchain build. For example, after building `yourname/dc-chain:stable`:
 
 ```sh
-python ./build_dc_kos_full_image.py -u yourname -p stable
+uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname -p stable
 ```
 
 The scripts have different defaults, so pass `--profile` explicitly when connecting the two builds. The full-image Dockerfile uses Alpine's `apk` package manager and expects the KOS toolchain layout; a custom base image must remain compatible with those requirements.
@@ -166,11 +177,14 @@ docker run --rm -it yourname/dc-kos-image:15.2.1-dev-latest bash -l
 
 Use the tag from your own build. The login shell (`bash -l`) loads `/etc/profile`, where the Dockerfile sources `/opt/toolchains/dc/kos/environ.sh` to configure the development environment.
 
+Both Dockerfiles include `uv` and `uvx`. The ready-to-use image installs `cpplint` with `uv tool install` for the default non-root user, using Alpine's Python. Run `cpplint --version` to check it.
+
 ### Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
-| `ModuleNotFoundError` for `click` or `requests` | Activate `venv` and run `python -m pip install -r requirements.txt`. |
+| `ModuleNotFoundError` for `click` or `requests` | Run `make create-env` and invoke the script with `uv run --locked --no-dev python`. |
+| `uv: command not found` | Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and ensure its installation directory is on `PATH`. |
 | Docker is missing or cannot connect to its daemon | Check that Docker is installed, running, and accessible with `docker info`. |
 | `/opt/toolchains/dc/kos/` does not exist | Prepare the KallistiOS checkout at that exact path before running the toolchain script. |
 | Docker cannot find the toolchain Dockerfile or profile | Check that your KallistiOS checkout contains the expected `utils/kos-chain/` files. |

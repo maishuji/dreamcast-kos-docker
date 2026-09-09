@@ -11,6 +11,8 @@ ARG snapshot_gldc=master
 #FROM maishuji/kos-chain:15.2.1-dev
 FROM maishuji/dc-chain:${dc_chain_version}
 
+COPY --from=ghcr.io/astral-sh/uv:0.12.11 /uv /uvx /usr/local/bin/
+
 ARG snapshot_kos
 ENV SNAPSHOT_KOS=${snapshot_kos}
 
@@ -30,7 +32,7 @@ COPY --chmod=755 apk-retry.sh /usr/local/bin/apk-retry
 RUN apk-retry add --no-cache gawk patch bzip2 tar make gmp mpc mpfr-dev gettext wget \
     libelf texinfo bison flex sed git diffutils curl jpeg \
     libpng-dev python3 pkgconfig libisofs-dev meson ruby-rake \
-    py3-pip py3-setuptools pipx\
+    py3-setuptools \
     py3-wheel samurai cmake openssh cppcheck \
     coreutils # Need fmt binary
 
@@ -149,5 +151,8 @@ RUN addgroup --gid "$GID" "$GROUPNAME" && \
 RUN rm -rf /var/cache/apk/*
 
 # Set default user
+# Alpine's login shell resets PATH, so also expose tools through /etc/profile.d.
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' > /etc/profile.d/uv.sh
+ENV PATH="/home/${USER}/.local/bin:${PATH}"
 USER $USER
-RUN pipx install cpplint && pipx ensurepath
+RUN uv tool install --no-cache --python /usr/bin/python3 cpplint
