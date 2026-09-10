@@ -27,7 +27,7 @@ Choose the script based on what you want to build:
 
 | Script | Purpose | Output image | Default profile |
 | --- | --- | --- | --- |
-| [`build_dc_toolchain_image.py`](build_dc_toolchain_image.py) | Build the compiler toolchain to use as a base image. | `<username>/dc-chain:<profile>`; also `<username>/dc-chain-gdb:<profile>` with `--use-gdb` | `stable` |
+| [`build_dc_toolchain_image.py`](build_dc_toolchain_image.py) | Build the compiler toolchain to use as a base image. | `<username>/dc-chain:<profile>`, or `<username>/dc-chain-gdb:<profile>` with `--use-gdb` | `stable` |
 | [`build_dc_kos_full_image.py`](build_dc_kos_full_image.py) | Build the development image with KOS, kos-ports, GLdc, and tools. | `<username>/dc-kos-image:<generated-tag>` | `15.2.1-dev` |
 
 For a development environment, start with the **ready-to-use image** instructions below. Building the toolchain yourself is optional: the full-image script selects `maishuji/dc-chain:15.2.1-dev` by default. Direct Docker builds default to `maishuji/dc-chain:stable`.
@@ -126,10 +126,12 @@ uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 15.
 | --- | --- | --- |
 | `-u`, `--username` | Yes | Namespace for the resulting `dc-chain` image. |
 | `-p`, `--profile` | No | Toolchain build profile and output image tag; defaults to `stable`. |
-| `-g`, `--use-gdb` | No | Also build `<username>/dc-chain-gdb:<profile>` using [`dc-chain/Dockerfile2`](dc-chain/Dockerfile2). |
+| `-g`, `--use-gdb` | No | Include GDB using the upstream `include_gdb=1` build argument; output `<username>/dc-chain-gdb:<profile>`. |
 | `--help` | No | Display command-line help and exit. |
 
-This script starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. A successful build produces `<username>/dc-chain:<profile>`. With `--use-gdb`, it then builds GDB on top of that image, using the same KallistiOS checkout and profile:
+This script starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. Without `--use-gdb`, it passes `include_gdb=0` and produces `<username>/dc-chain:<profile>`.
+
+With `--use-gdb`, it passes `include_gdb=1` and builds the toolchain and GDB together in a single image, `<username>/dc-chain-gdb:<profile>`. To also create an image without GDB, run the script separately without the flag. GDB builds require a KallistiOS Dockerfile that declares `ARG include_gdb`; update your checkout if the script reports that this argument is unsupported.
 
 ```sh
 uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p stable --use-gdb
@@ -204,7 +206,7 @@ Both Dockerfiles include `uv` and `uvx`. The ready-to-use image installs `cpplin
 | The full-image script reports `Docker build failed` | Check Docker's output above the message for the failing step. The script exits with an error without a Python traceback. |
 | Snapshot retrieval fails or a snapshot menu is empty | Check access to GitHub/GitLab and whether the selected year has tags. If the KOS or kos-ports menu has no choices, press `Ctrl+C` and rerun with a different year or `master`. |
 
-For toolchain builds, check Docker's output and confirm the resulting image with `docker image inspect yourname/dc-chain:stable` (substitute your profile). If either the toolchain or GDB Docker build fails, the script reports the failing stage and exits with a nonzero status. A failed toolchain build prevents the GDB build from starting.
+For toolchain builds, check Docker's output and confirm the resulting image with `docker image inspect yourname/dc-chain:stable` (substitute your profile). If the Docker build fails, including while building GDB, the script reports the Docker exit code and exits with a nonzero status.
 
 ---
 

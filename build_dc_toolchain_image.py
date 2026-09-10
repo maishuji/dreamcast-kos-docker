@@ -5,12 +5,13 @@ as the KOS and kos-ports libraries.
 usage: build_dc_toolchain_image.py [-h] [-u USERNAME] [-p PROFILE] [-g]
     USERNAME : the docker username you want to use.
     PROFILE : e.g 15.0.1-dev
-    -g : Build GDB-enabled image in addition to base toolchain
+    -g : Include GDB in the toolchain image
 profiles can be found here :
   https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles
 """
 
 import os
+from pathlib import Path
 import subprocess
 
 import click
@@ -18,62 +19,34 @@ import click
 DEFAULT_DC_CHAIN_PROFILE = "stable"
 
 
-def build_gdb_image(username, dc_chain_profile, base_image_name):
-    """
-    Builds a GDB-enabled Docker image based on the base toolchain image.
-    Args:
-        username (str): The username to be used as part of the image name.
-        dc_chain_profile (str): Which dc_chain profile was built.
-        base_image_name (str): The base image to build from.
-    """
-    gdb_image_name = f"{username}/dc-chain-gdb:{dc_chain_profile}"
-    dockerfile_path = os.path.join(os.path.dirname(__file__), "dc-chain/Dockerfile2")
-
-    print(f"\nBuilding GDB-enabled Docker image: {gdb_image_name}")
-    print(f"Base image: {base_image_name}")
-
-    command = [
-        "docker",
-        "build",
-        "--build-arg",
-        f"base_image={base_image_name}",
-        "--build-arg",
-        f"profile={dc_chain_profile}",
-        "-t",
-        gdb_image_name,
-        "-f",
-        dockerfile_path,
-        "."
-    ]
-
-    try:
-        print(f"Running command: {' '.join(command)}")
-        subprocess.run(command, check=True, shell=False)
-        print(f"Successfully built GDB-enabled Docker image: {gdb_image_name}")
-    except subprocess.CalledProcessError as process_error:
-        raise click.ClickException(
-            f"GDB Docker build failed (exit code {process_error.returncode}). "
-            "See the Docker output above for details."
-        ) from process_error
-
-
 def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
     """
     Builds a Docker image with specified username and version tag,
-    and includes an input parameter 'dc_chain'.
+    using the upstream KallistiOS Dockerfile.
     Args:
         username (str): The username to be used as part of the image name.
         dc_chain_profile (str): Which dc_chain profile to build.
-        use_gdb (bool): If True, build an additional GDB-enabled image from the base toolchain.
+        use_gdb (bool): If True, include GDB and use the dc-chain-gdb image name.
     """
     path_to_docker = "/opt/toolchains/dc/kos/"
-    image_name = f"{username}/dc-chain:{dc_chain_profile}"
+    image_repository = "dc-chain-gdb" if use_gdb else "dc-chain"
+    image_name = f"{username}/{image_repository}:{dc_chain_profile}"
     try:
         print(f"Changing directory to: {path_to_docker}")
         os.chdir(path_to_docker)
     except FileNotFoundError:
         print(f"Error: Directory '{path_to_docker}' does not exist.")
         return
+
+    dockerfile_path = Path("utils/kos-chain/docker/Dockerfile")
+    if use_gdb and not any(
+        line.strip().split("=", 1)[0] == "ARG include_gdb"
+        for line in dockerfile_path.read_text(encoding="utf-8").splitlines()
+    ):
+        raise click.ClickException(
+            "The KallistiOS Dockerfile does not support include_gdb. "
+            "Update your checkout at /opt/toolchains/dc/kos before using --use-gdb."
+        )
 
     print(
         "Building Docker image... This may take a while. dc_chain_profile: ",
@@ -86,6 +59,8 @@ def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
         f"profile={dc_chain_profile}",
         "--build-arg",
         "makejobs=4",
+        "--build-arg",
+        f"include_gdb={int(use_gdb)}",
         "-t",
         image_name,
         "-f",
@@ -103,10 +78,6 @@ def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
             "See the Docker output above for details."
         ) from process_error
 
-    # Build GDB-enabled image if requested
-    if use_gdb:
-        build_gdb_image(username, dc_chain_profile, image_name)
-
 
 @click.command()
 @click.option("-u", "--username", required=True, type=str, help="Docker username")
@@ -123,7 +94,7 @@ def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
     "--use-gdb",
     is_flag=True,
     default=False,
-    help="Build GDB-enabled image in addition to base toolchain",
+    help="Include GDB in the toolchain image",
 )
 def main(username, profile, use_gdb):
     """
