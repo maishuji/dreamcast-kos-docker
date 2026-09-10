@@ -1,6 +1,12 @@
+UV ?= uv
+
+.PHONY: lint create-env create-dev-env
+
 lint:
-	pylint *.py
+	$(UV) run --locked python -m pylint *.py
 
 create-env:
-	python3 -m venv venv
-	. venv/bin/activate && pip install -r requirements.txt
+	$(UV) sync --locked --no-dev
+
+create-dev-env:
+	$(UV) sync --locked

@@ -1,12 +1,14 @@
 FROM maishuji/dc-chain:15.2.1-dev
 
+COPY --from=ghcr.io/astral-sh/uv:0.12.11 /uv /uvx /usr/local/bin/
+
 RUN apk update
 
 # Installing prerequites
 RUN apk add gawk patch bzip2 tar make gmp mpc mpfr-dev gettext wget \
     libelf texinfo bison flex sed git diffutils curl jpeg \
     libpng-dev python3 pkgconfig libisofs-dev meson ruby-rake \
-    py3-pip py3-setuptools \
+    py3-setuptools \
     py3-wheel samurai cmake openssh cppcheck
 
 # Preparing kos directory
