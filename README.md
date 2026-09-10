@@ -48,14 +48,15 @@ Alternatively, run `make create-env`. uv creates `.venv` and installs the build 
 
 Run scripts with `uv run --locked --no-dev`; no environment activation is required. If you previously activated `venv`, run `deactivate` before using the new setup. The examples below use `yourname` as a placeholder for your Docker username or image namespace.
 
-For development, install the dependencies and the pinned Pylint version, then run lint:
+For development, install the dependencies and the pinned Pylint version, then run lint and tests:
 
 ```sh
 make create-dev-env
 make lint
+make test
 ```
 
-`make create-dev-env` runs `uv sync --locked`, which also installs the `dev` dependency group. `make lint` runs Pylint through `uv run --locked`. CI runs the same targets.
+`make create-dev-env` runs `uv sync --locked`, which also installs the `dev` dependency group. `make lint` runs Pylint through `uv run --locked`. `make test` discovers and runs the unit tests in `tests/`; Docker calls are mocked, so no Docker daemon or KallistiOS checkout is needed. CI runs lint and tests as separate jobs on pull requests and pushes to `main`, using the same targets.
 
 Dependencies are declared in `pyproject.toml`, and `uv.lock` pins their resolved versions, including transitive dependencies. Use `uv add <package>` or `uv add --dev <package>` to add dependencies, and commit both files together. The `--locked` flag makes setup fail if the lockfile needs updating; run `uv lock` after editing dependencies manually.
 
@@ -203,7 +204,7 @@ Both Dockerfiles include `uv` and `uvx`. The ready-to-use image installs `cpplin
 | The full-image script reports `Docker build failed` | Check Docker's output above the message for the failing step. The script exits with an error without a Python traceback. |
 | Snapshot retrieval fails or a snapshot menu is empty | Check access to GitHub/GitLab and whether the selected year has tags. If the KOS or kos-ports menu has no choices, press `Ctrl+C` and rerun with a different year or `master`. |
 
-For toolchain builds, check Docker's output and confirm the resulting image with `docker image inspect yourname/dc-chain:stable` (substitute your profile). The toolchain script currently prints a success message even when the Docker build command exits with an error.
+For toolchain builds, check Docker's output and confirm the resulting image with `docker image inspect yourname/dc-chain:stable` (substitute your profile). If either the toolchain or GDB Docker build fails, the script reports the failing stage and exits with a nonzero status. A failed toolchain build prevents the GDB build from starting.
 
 ---
 

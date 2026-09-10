@@ -28,10 +28,10 @@ def build_gdb_image(username, dc_chain_profile, base_image_name):
     """
     gdb_image_name = f"{username}/dc-chain-gdb:{dc_chain_profile}"
     dockerfile_path = os.path.join(os.path.dirname(__file__), "dc-chain/Dockerfile2")
-    
+
     print(f"\nBuilding GDB-enabled Docker image: {gdb_image_name}")
     print(f"Base image: {base_image_name}")
-    
+
     command = [
         "docker",
         "build",
@@ -45,13 +45,16 @@ def build_gdb_image(username, dc_chain_profile, base_image_name):
         dockerfile_path,
         "."
     ]
-    
+
     try:
         print(f"Running command: {' '.join(command)}")
-        subprocess.run(command, check=False, shell=False)
+        subprocess.run(command, check=True, shell=False)
         print(f"Successfully built GDB-enabled Docker image: {gdb_image_name}")
     except subprocess.CalledProcessError as process_error:
-        print(f"Error occurred while building the GDB Docker image: {process_error}")
+        raise click.ClickException(
+            f"GDB Docker build failed (exit code {process_error.returncode}). "
+            "See the Docker output above for details."
+        ) from process_error
 
 
 def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
@@ -90,15 +93,15 @@ def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
         "."
     ]
 
-    print(f"Running command: {' '.join(command)}")
-    # return
     try:
         print(f"Running command: {' '.join(command)}")
-        subprocess.run(command, check=False, shell=False)
+        subprocess.run(command, check=True, shell=False)
         print(f"Successfully built Docker image: {image_name}")
     except subprocess.CalledProcessError as process_error:
-        print(f"Error occurred while building the Docker image: {process_error}")
-        return
+        raise click.ClickException(
+            f"Toolchain Docker build failed (exit code {process_error.returncode}). "
+            "See the Docker output above for details."
+        ) from process_error
 
     # Build GDB-enabled image if requested
     if use_gdb:
