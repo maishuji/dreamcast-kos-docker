@@ -200,8 +200,9 @@ def print_settings(settings):
     "--profile",
     required=False,
     type=str,
-    default="15.2.1-dev",
-    help="dc-chain profile : e.g 15.2.1-dev",
+    default="16.2.0",
+    show_default=True,
+    help="Base toolchain image tag (must be available locally or in the registry)",
 )
 @click.option(
     "--kos-ports-branch",
@@ -223,7 +224,6 @@ def main(username, profile, kos_ports_branch, gdb):
     snapshot_kosports = kos_ports_branch or choose_snapshot_kosports()
     snapshot_gldc = choose_snapshot_gldc()
 
-    # Currently the toolchain tag is hardcoded to 14.3.0-dev-<snapshot_kos>
     tag = profile + "-"
 
     # Add gdb suffix if building with GDB support

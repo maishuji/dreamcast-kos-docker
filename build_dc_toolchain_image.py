@@ -4,11 +4,11 @@ It can serve as the base of an other image containing all the tools such
 as the KOS and kos-ports libraries.
 usage: build_dc_toolchain_image.py [-u USERNAME] [-p PROFILE] [-g] [--kos-path PATH]
     USERNAME : the docker username you want to use.
-    PROFILE : e.g 15.0.1-dev
+    PROFILE : Dreamcast toolchain profile (default: 16.2.0)
     -g : Include GDB in the toolchain image
     --kos-path : Use existing local sources instead of a fresh upstream checkout
 profiles can be found here :
-  https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles
+  https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles/dreamcast
 """
 
 from pathlib import Path
@@ -17,7 +17,7 @@ from tempfile import TemporaryDirectory
 
 import click
 
-DEFAULT_DC_CHAIN_PROFILE = "stable"
+DEFAULT_DC_CHAIN_PROFILE = "16.2.0"
 KOS_REPOSITORY = "https://github.com/KallistiOS/KallistiOS.git"
 
 
@@ -110,9 +110,10 @@ def build_from_checkout(username, dc_chain_profile, use_gdb, source_path):
     "-p",
     "--profile",
     required=False,
-    default="stable",
+    default=DEFAULT_DC_CHAIN_PROFILE,
+    show_default=True,
     type=str,
-    help="dc-chain profile : e.g 16.2.0",
+    help="Dreamcast toolchain profile from the selected KallistiOS sources",
 )
 @click.option(
     "-g",
