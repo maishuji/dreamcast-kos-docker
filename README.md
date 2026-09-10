@@ -27,10 +27,10 @@ Choose the script based on what you want to build:
 
 | Script | Purpose | Output image | Default profile |
 | --- | --- | --- | --- |
-| [`build_dc_toolchain_image.py`](build_dc_toolchain_image.py) | Build the compiler toolchain to use as a base image. | `<username>/dc-chain:<profile>`, or `<username>/dc-chain-gdb:<profile>` with `--use-gdb` | `stable` |
-| [`build_dc_kos_full_image.py`](build_dc_kos_full_image.py) | Build the development image with KOS, kos-ports, GLdc, and tools. | `<username>/dc-kos-image:<generated-tag>` | `15.2.1-dev` |
+| [`build_dc_toolchain_image.py`](build_dc_toolchain_image.py) | Build the compiler toolchain to use as a base image. | `<username>/dc-chain:<profile>`, or `<username>/dc-chain-gdb:<profile>` with `--use-gdb` | `16.2.0` |
+| [`build_dc_kos_full_image.py`](build_dc_kos_full_image.py) | Build the development image with KOS, kos-ports, GLdc, and tools. | `<username>/dc-kos-image:<generated-tag>` | `16.2.0` |
 
-For a development environment, start with the **ready-to-use image** instructions below. Building the toolchain yourself is optional: the full-image script selects `maishuji/dc-chain:15.2.1-dev` by default. Direct Docker builds default to `maishuji/dc-chain:stable`.
+For a development environment, start with the **ready-to-use image** instructions below. Building the toolchain yourself is optional: both scripts and the Dockerfiles default to profile/tag `16.2.0`. The full-image build uses `maishuji/dc-chain:16.2.0` (or `maishuji/dc-chain-gdb:16.2.0` with `--gdb`).
 
 ### Prerequisites and Python Setup
 
@@ -67,11 +67,11 @@ Both scripts create local images. They do not log in to a registry or push image
 Run this script **from the root of this repository**, because it uses `./kos-ready/` as the Docker build context. A local KallistiOS checkout is not required; the Dockerfile clones the sources inside the image.
 
 ```sh
-# Use the default toolchain profile, 15.2.1-dev.
+# Use the default toolchain profile, 16.2.0.
 uv run --locked --no-dev python ./build_dc_kos_full_image.py --username yourname
 
 # Or select a toolchain image tag explicitly.
-uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname -p 15.2.1-dev
+uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname -p 16.2.0
 
 # Optionally select a kos-ports branch and skip its snapshot menu.
 uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname --kos-ports-branch feature/my-branch
@@ -80,7 +80,7 @@ uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname --kos-p
 | Option | Required | Meaning |
 | --- | --- | --- |
 | `-u`, `--username` | Yes | Namespace for the resulting `dc-kos-image` image. |
-| `-p`, `--profile` | No | Base toolchain image tag; defaults to `15.2.1-dev`. |
+| `-p`, `--profile` | No | Base toolchain image tag; defaults to `16.2.0`. |
 | `-g`, `--gdb` | No | Use the `dc-chain-gdb` base image and add `gdb-` after the profile in the output tag. |
 | `--kos-ports-branch` | No | kos-ports branch or tag to check out. When omitted, use the interactive snapshot menu. |
 | `--help` | No | Display command-line help and exit. |
@@ -106,25 +106,29 @@ By default, the toolchain script makes a fresh shallow clone of `https://github.
 
 To use a specific revision, a fork, or local changes, pass `--kos-path /path/to/KallistiOS`. The script uses that directory as-is: it does not fetch updates or modify the checkout. It prints whether it is using fresh or local sources, along with the source path, before building. Docker may still need network access to download images, packages, and compiler sources in either mode.
 
-The selected sources must contain `utils/kos-chain/docker/Dockerfile` and the chosen profile under `utils/kos-chain/profiles`. See the upstream [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles), or the profiles in your local checkout when using `--kos-path`.
+The selected sources must contain `utils/kos-chain/docker/Dockerfile` and the chosen profile under `utils/kos-chain/profiles/dreamcast`. See the upstream [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles/dreamcast), or the profiles in your local checkout when using `--kos-path`.
+
+`--profile` has two related roles: the toolchain script selects a source profile (the `.mk` filename without its extension) and uses that name as the output tag; the full-image script selects an already-built Docker image tag. A profile existing upstream does not guarantee that a matching image is published. The default `16.2.0` is available as an upstream profile and as the published `maishuji/dc-chain:16.2.0` image.
+
+The upstream `stable` profile is also valid, but its compiler selection can change over time; build and provide an image tagged `stable` before using it in the full-image script. For GDB builds, provide the matching `dc-chain-gdb:<profile>` image locally or in the registry. If it is unavailable, build it with `--use-gdb` and follow **Use Your Own Toolchain in the Full Image** below.
 
 From this repository, run:
 
 ```sh
-# Use the default profile: creates yourname/dc-chain:stable.
+# Use the default profile: creates yourname/dc-chain:16.2.0.
 uv run --locked --no-dev python ./build_dc_toolchain_image.py --username yourname
 
 # Choose a profile supported by upstream KallistiOS.
-uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 15.2.1-dev
+uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 16.2.0
 
 # Or build from an existing checkout, including any local changes.
-uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p stable --kos-path /opt/toolchains/dc/kos
+uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 16.2.0 --kos-path /opt/toolchains/dc/kos
 ```
 
 | Option | Required | Meaning |
 | --- | --- | --- |
 | `-u`, `--username` | Yes | Namespace for the resulting `dc-chain` image. |
-| `-p`, `--profile` | No | Toolchain build profile and output image tag; defaults to `stable`. |
+| `-p`, `--profile` | No | Toolchain build profile and output image tag; defaults to `16.2.0`. |
 | `-g`, `--use-gdb` | No | Include GDB using the upstream `include_gdb=1` build argument; output `<username>/dc-chain-gdb:<profile>`. |
 | `--kos-path` | No | Use an existing local KallistiOS source directory instead of a fresh upstream checkout. No updates are fetched. |
 | `--help` | No | Display command-line help and exit. |
@@ -134,7 +138,7 @@ This script starts the Docker build immediately, without a confirmation prompt. 
 With `--use-gdb`, it passes `include_gdb=1` and builds the toolchain and GDB together in a single image, `<username>/dc-chain-gdb:<profile>`. To also create an image without GDB, run the script separately without the flag. GDB builds require a KallistiOS Dockerfile that declares `ARG include_gdb`; update your checkout if the script reports that this argument is unsupported.
 
 ```sh
-uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p stable --use-gdb
+uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 16.2.0 --use-gdb
 ```
 
 ### Use Your Own Toolchain in the Full Image
@@ -145,22 +149,24 @@ To use the toolchain image you built, change the base-image line in [`kos-ready/
 FROM yourname/${base_image}:${dc_chain_version}
 ```
 
-Then run the full-image script with the same profile used for the toolchain build. For example, after building `yourname/dc-chain:stable`:
+Then run the full-image script with the same profile used for the toolchain build. For example, after building `yourname/dc-chain:16.2.0`:
 
 ```sh
-uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname -p stable
+uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname -p 16.2.0
 ```
 
-If you also built `yourname/dc-chain-gdb:stable`, add `--gdb` to the full-image command to use it.
+If you also built `yourname/dc-chain-gdb:16.2.0`, add `--gdb` to the full-image command to use it.
 
-The scripts have different defaults, so pass `--profile` explicitly when connecting the two builds. The full-image Dockerfile uses Alpine's `apk` package manager and expects the KOS toolchain layout; a custom base image must remain compatible with those requirements.
+Both scripts default to `16.2.0`. If you choose another profile, pass the same `--profile` to both builds. The full-image Dockerfile uses Alpine's `apk` package manager and expects the KOS toolchain layout; a custom base image must remain compatible with those requirements.
+
+The alternative [`kos-alpine/Dockerfile`](kos-alpine/Dockerfile) also defaults to `dc_chain_version=16.2.0`; override it with `--build-arg dc_chain_version=<tag>` when building that Dockerfile directly.
 
 ### Generated Image Tags
 
 The full-image script generates tags using these rules:
 
 - Start with `<profile>-<kos-snapshot>`, lowercasing the KOS tag. If KOS is `master`, use `<profile>-latest`.
-- With `--gdb`, insert `gdb-` immediately after `<profile>-`; for example, `stable-gdb-latest` when KOS is `master`.
+- With `--gdb`, insert `gdb-` immediately after `<profile>-`; for example, `16.2.0-gdb-latest` when KOS is `master`.
 - Append `-kp<kos-ports-ref>` in lowercase when kos-ports is not `master`. Characters outside `a-z`, `0-9`, `_`, `.`, and `-` are replaced with `-` in the image tag (for example, `feature/my-branch` becomes `kpfeature-my-branch`); the Git branch or tag itself is passed unchanged.
 - Append `-gl<gldc-snapshot>` when GLdc is not `master`, using the last seven characters of the branch name in lowercase (for example, `release/01MAR25` becomes `gl01mar25`).
 
@@ -168,10 +174,10 @@ Examples below illustrate the naming rules; available snapshots depend on the co
 
 | Profile | KOS | kos-ports | GLdc | Generated tag |
 | --- | --- | --- | --- | --- |
-| `15.2.1-dev` | `master` | `master` | `master` | `15.2.1-dev-latest` |
-| `15.2.1-dev` | `01MAR25` | `01MAR25` | `release/01MAR25` | `15.2.1-dev-01mar25-kp01mar25-gl01mar25` |
-| `stable` | `01MAR25` | `master` | `master` | `stable-01mar25` |
-| `15.2.1-dev` | `master` | `feature/my-branch` | `master` | `15.2.1-dev-latest-kpfeature-my-branch` |
+| `16.2.0` | `master` | `master` | `master` | `16.2.0-latest` |
+| `16.2.0` | `01MAR25` | `01MAR25` | `release/01MAR25` | `16.2.0-01mar25-kp01mar25-gl01mar25` |
+| `16.2.0` | `01MAR25` | `master` | `master` | `16.2.0-01mar25` |
+| `16.2.0` | `master` | `feature/my-branch` | `master` | `16.2.0-latest-kpfeature-my-branch` |
 
 ### Run the Container
 
@@ -181,10 +187,10 @@ Find the image name and tag after the build:
 docker image ls yourname/dc-kos-image
 ```
 
-For example, after using profile `15.2.1-dev` and selecting `master` for all three components:
+For example, after using profile `16.2.0` and selecting `master` for all three components:
 
 ```sh
-docker run --rm -it yourname/dc-kos-image:15.2.1-dev-latest bash -l
+docker run --rm -it yourname/dc-kos-image:16.2.0-latest bash -l
 ```
 
 Use the tag from your own build. The login shell (`bash -l`) loads `/etc/profile`, where the Dockerfile sources `/opt/toolchains/dc/kos/environ.sh` to configure the development environment.
@@ -207,7 +213,7 @@ Both Dockerfiles include `uv` and `uvx`. The ready-to-use image installs `cpplin
 | The full-image script reports `Docker build failed` | Check Docker's output above the message for the failing step. The script exits with an error without a Python traceback. |
 | Snapshot retrieval fails or a snapshot menu is empty | Check access to GitHub/GitLab and whether the selected year has tags. If the KOS or kos-ports menu has no choices, press `Ctrl+C` and rerun with a different year or `master`. |
 
-For toolchain builds, check Docker's output and confirm the resulting image with `docker image inspect yourname/dc-chain:stable` (substitute your profile). If the Docker build fails, including while building GDB, the script reports the Docker exit code and exits with a nonzero status.
+For toolchain builds, check Docker's output and confirm the resulting image with `docker image inspect yourname/dc-chain:16.2.0` (substitute your profile). If the Docker build fails, including while building GDB, the script reports the Docker exit code and exits with a nonzero status.
 
 ---
 

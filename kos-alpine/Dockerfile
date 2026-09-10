@@ -1,4 +1,5 @@
-FROM maishuji/dc-chain:15.2.1-dev
+ARG dc_chain_version=16.2.0
+FROM maishuji/dc-chain:${dc_chain_version}
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.11 /uv /uvx /usr/local/bin/
 
