@@ -1,4 +1,4 @@
-name: Lint
+name: Lint and Tests
 
 on:
   push:
@@ -34,3 +34,31 @@ jobs:
 
       - name: Run lint
         run: make lint
+
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: '0.12.11'
+          python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: make create-dev-env
+
+      - name: Run tests
+        run: make test
