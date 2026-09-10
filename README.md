@@ -36,7 +36,7 @@ For a development environment, start with the **ready-to-use image** instruction
 
 - Install Python 3.11 or newer, [uv](https://docs.astral.sh/uv/getting-started/installation/), and Docker with a running daemon. `docker info` should succeed for your user. CI uses Python 3.11; CI and the Dockerfiles pin uv to `0.12.11`.
 - Allow network access for Python dependencies, Docker images, packages, and source repositories. The full-image script also queries GitHub and GitLab for snapshot choices.
-- To build the toolchain yourself, install Git and prepare a local KallistiOS checkout as described below.
+- To build the toolchain from fresh upstream sources (the default), install Git. Alternatively, provide existing sources with `--kos-path`.
 
 Run these commands from the root of this repository:
 
@@ -102,15 +102,11 @@ The script remains interactive for KOS, GLdc, and confirmation. It prints the co
 
 ### Build the Toolchain (Optional)
 
-The toolchain script expects a KallistiOS checkout at the fixed path `/opt/toolchains/dc/kos`. It changes into that directory and builds with `utils/kos-chain/docker/Dockerfile`, using the checkout root as the build context. There is no command-line option to change this path.
+By default, the toolchain script makes a fresh shallow clone of `https://github.com/KallistiOS/KallistiOS.git` in a temporary directory. It uses the remote's default branch and builds with that checkout's `utils/kos-chain/docker/Dockerfile`, using the same checkout as the Docker build context. The temporary checkout is removed after the build, including on failure. Each invocation needs Git and network access; later invocations can use newer upstream sources.
 
-If the checkout does not already exist, create it with Git. Ensure your user can create directories under `/opt/toolchains/dc` first:
+To use a specific revision, a fork, or local changes, pass `--kos-path /path/to/KallistiOS`. The script uses that directory as-is: it does not fetch updates or modify the checkout. It prints whether it is using fresh or local sources, along with the source path, before building. Docker may still need network access to download images, packages, and compiler sources in either mode.
 
-```sh
-git clone https://github.com/KallistiOS/KallistiOS.git /opt/toolchains/dc/kos
-```
-
-The checkout must contain `utils/kos-chain/docker/Dockerfile` and the selected profile under `utils/kos-chain/profiles`. Refer to the profiles in your checkout; the upstream [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles) are also linked for reference.
+The selected sources must contain `utils/kos-chain/docker/Dockerfile` and the chosen profile under `utils/kos-chain/profiles`. See the upstream [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles), or the profiles in your local checkout when using `--kos-path`.
 
 From this repository, run:
 
@@ -118,8 +114,11 @@ From this repository, run:
 # Use the default profile: creates yourname/dc-chain:stable.
 uv run --locked --no-dev python ./build_dc_toolchain_image.py --username yourname
 
-# Choose a profile supported by your KallistiOS checkout.
+# Choose a profile supported by upstream KallistiOS.
 uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 15.2.1-dev
+
+# Or build from an existing checkout, including any local changes.
+uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p stable --kos-path /opt/toolchains/dc/kos
 ```
 
 | Option | Required | Meaning |
@@ -127,6 +126,7 @@ uv run --locked --no-dev python ./build_dc_toolchain_image.py -u yourname -p 15.
 | `-u`, `--username` | Yes | Namespace for the resulting `dc-chain` image. |
 | `-p`, `--profile` | No | Toolchain build profile and output image tag; defaults to `stable`. |
 | `-g`, `--use-gdb` | No | Include GDB using the upstream `include_gdb=1` build argument; output `<username>/dc-chain-gdb:<profile>`. |
+| `--kos-path` | No | Use an existing local KallistiOS source directory instead of a fresh upstream checkout. No updates are fetched. |
 | `--help` | No | Display command-line help and exit. |
 
 This script starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. Without `--use-gdb`, it passes `include_gdb=0` and produces `<username>/dc-chain:<profile>`.
@@ -198,7 +198,8 @@ Both Dockerfiles include `uv` and `uvx`. The ready-to-use image installs `cpplin
 | `ModuleNotFoundError` for `click` or `requests` | Run `make create-env` and invoke the script with `uv run --locked --no-dev python`. |
 | `uv: command not found` | Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and ensure its installation directory is on `PATH`. |
 | Docker is missing or cannot connect to its daemon | Check that Docker is installed, running, and accessible with `docker info`. |
-| `/opt/toolchains/dc/kos/` does not exist | Prepare the KallistiOS checkout at that exact path before running the toolchain script. |
+| KallistiOS cloning fails | Check that Git is installed and GitHub is reachable, or supply an existing checkout with `--kos-path`. |
+| The local KallistiOS path is invalid or its Dockerfile cannot be read | Check the directory passed to `--kos-path` and ensure it contains `utils/kos-chain/docker/Dockerfile`. Omit the option to clone fresh sources. |
 | Docker cannot find the toolchain Dockerfile or profile | Check that your KallistiOS checkout contains the expected `utils/kos-chain/` files. |
 | Docker cannot find `./kos-ready/` | Run the full-image script from this repository's root. |
 | The base image cannot be found or pulled | Check the profile tag and the `FROM` namespace in `kos-ready/Dockerfile`, especially when using your own toolchain. |

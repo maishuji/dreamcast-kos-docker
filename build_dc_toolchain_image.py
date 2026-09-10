@@ -2,50 +2,73 @@
 This script is used to build a docker image with the dc-chain toolchain.
 It can serve as the base of an other image containing all the tools such
 as the KOS and kos-ports libraries.
-usage: build_dc_toolchain_image.py [-h] [-u USERNAME] [-p PROFILE] [-g]
+usage: build_dc_toolchain_image.py [-u USERNAME] [-p PROFILE] [-g] [--kos-path PATH]
     USERNAME : the docker username you want to use.
     PROFILE : e.g 15.0.1-dev
     -g : Include GDB in the toolchain image
+    --kos-path : Use existing local sources instead of a fresh upstream checkout
 profiles can be found here :
   https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles
 """
 
-import os
 from pathlib import Path
 import subprocess
+from tempfile import TemporaryDirectory
 
 import click
 
 DEFAULT_DC_CHAIN_PROFILE = "stable"
+KOS_REPOSITORY = "https://github.com/KallistiOS/KallistiOS.git"
 
 
-def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
-    """
-    Builds a Docker image with specified username and version tag,
-    using the upstream KallistiOS Dockerfile.
-    Args:
-        username (str): The username to be used as part of the image name.
-        dc_chain_profile (str): Which dc_chain profile to build.
-        use_gdb (bool): If True, include GDB and use the dc-chain-gdb image name.
-    """
-    path_to_docker = "/opt/toolchains/dc/kos/"
-    image_repository = "dc-chain-gdb" if use_gdb else "dc-chain"
-    image_name = f"{username}/{image_repository}:{dc_chain_profile}"
-    try:
-        print(f"Changing directory to: {path_to_docker}")
-        os.chdir(path_to_docker)
-    except FileNotFoundError:
-        print(f"Error: Directory '{path_to_docker}' does not exist.")
+def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False, kos_path=None):
+    """Build from fresh upstream sources, or an explicitly selected local checkout."""
+    if kos_path is not None:
+        source_path = Path(kos_path).expanduser().resolve()
+        print(f"Using local KallistiOS sources: {source_path} (no updates fetched)")
+        build_from_checkout(username, dc_chain_profile, use_gdb, source_path)
         return
 
-    dockerfile_path = Path("utils/kos-chain/docker/Dockerfile")
+    with TemporaryDirectory(prefix="dc-chain-kos-") as temporary_directory:
+        source_path = Path(temporary_directory) / "kos"
+        print(f"Cloning fresh KallistiOS sources from {KOS_REPOSITORY}")
+        try:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", KOS_REPOSITORY, str(source_path)],
+                check=True,
+            )
+        except subprocess.CalledProcessError as process_error:
+            raise click.ClickException(
+                f"KallistiOS clone failed (exit code {process_error.returncode}). "
+                "Check the Git output above, or use --kos-path for a local checkout."
+            ) from process_error
+        except FileNotFoundError as process_error:
+            raise click.ClickException(
+                "Git is required for a fresh checkout. Install Git or use --kos-path."
+            ) from process_error
+        print(f"Using fresh KallistiOS sources: {source_path}")
+        build_from_checkout(username, dc_chain_profile, use_gdb, source_path)
+
+
+def build_from_checkout(username, dc_chain_profile, use_gdb, source_path):
+    """Use the Dockerfile and build context from the same source directory."""
+    image_repository = "dc-chain-gdb" if use_gdb else "dc-chain"
+    image_name = f"{username}/{image_repository}:{dc_chain_profile}"
+    dockerfile_path = source_path / "utils/kos-chain/docker/Dockerfile"
+    try:
+        dockerfile = dockerfile_path.read_text(encoding="utf-8")
+    except OSError as file_error:
+        raise click.ClickException(
+            f"Cannot read KallistiOS Dockerfile at {dockerfile_path}: {file_error}"
+        ) from file_error
+
     if use_gdb and not any(
         line.strip().split("=", 1)[0] == "ARG include_gdb"
-        for line in dockerfile_path.read_text(encoding="utf-8").splitlines()
+        for line in dockerfile.splitlines()
     ):
         raise click.ClickException(
             "The KallistiOS Dockerfile does not support include_gdb. "
-            "Update your checkout at /opt/toolchains/dc/kos before using --use-gdb."
+            f"Update your checkout at {source_path} before using --use-gdb."
         )
 
     print(
@@ -64,8 +87,8 @@ def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
         "-t",
         image_name,
         "-f",
-        "./utils/kos-chain/docker/Dockerfile",
-        "."
+        str(dockerfile_path),
+        str(source_path),
     ]
 
     try:
@@ -77,6 +100,8 @@ def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
             f"Toolchain Docker build failed (exit code {process_error.returncode}). "
             "See the Docker output above for details."
         ) from process_error
+    except FileNotFoundError as process_error:
+        raise click.ClickException("Docker is required to build the image.") from process_error
 
 
 @click.command()
@@ -96,11 +121,17 @@ def build_dc_toolchains_image(username, dc_chain_profile, use_gdb=False):
     default=False,
     help="Include GDB in the toolchain image",
 )
-def main(username, profile, use_gdb):
+@click.option(
+    "--kos-path",
+    type=click.Path(exists=True, file_okay=False, resolve_path=True, path_type=Path),
+    help="Use this local KallistiOS checkout as-is instead of cloning fresh upstream sources.",
+)
+def main(username, profile, use_gdb, kos_path):
+    """Build a toolchain from a fresh upstream checkout by default.
+
+    Use --kos-path to build from existing local sources without fetching updates.
     """
-    Main function to parse command line arguments and call the build function.
-    """
-    build_dc_toolchains_image(username, profile, use_gdb)
+    build_dc_toolchains_image(username, profile, use_gdb, kos_path)
 
 
 if __name__ == "__main__":
