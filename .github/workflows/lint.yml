@@ -62,3 +62,26 @@ jobs:
 
       - name: Test shared package and compatibility scripts
         run: make test
+
+  package:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: '0.12.11'
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+      - name: Install dependencies
+        run: make create-dev-env
+      - name: Validate wheel and sdist installations outside checkout
+        run: make test-package

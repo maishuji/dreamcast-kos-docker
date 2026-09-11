@@ -1,4 +1,4 @@
-"""Legacy Click commands and prompts backed by the shared build implementation."""
+"""Installed and legacy Click commands backed by the shared build implementation."""
 
 from pathlib import Path
 
@@ -108,7 +108,8 @@ def print_settings(settings):
 
 
 @click.command()
-@click.option("-u", "--username", required=True, type=str, help="Docker username")
+@click.option("-u", "--namespace", "--username", "username",
+              required=True, type=str, help="Namespace for the output image")
 @click.option(
     "-p",
     "--profile",
@@ -120,7 +121,9 @@ def print_settings(settings):
 )
 @click.option(
     "-g",
+    "--gdb",
     "--use-gdb",
+    "use_gdb",
     is_flag=True,
     default=False,
     help="Include GDB in the toolchain image",
@@ -138,36 +141,39 @@ def toolchain_command(username, profile, use_gdb, kos_path):
     builds.build_toolchain(builds.ToolchainBuild(username, profile, use_gdb), kos_path)
 
 
-def full_image_command(build_context):
-    """Bind the legacy script's context explicitly until assets are packaged in P3."""
-    @click.command()
-    @click.option("-u", "--username", required=True, type=str, help="Docker username")
-    @click.option(
-        "-p",
-        "--profile",
-        required=False,
-        type=str,
-        default=defaults.DEFAULT_DC_CHAIN_PROFILE,
-        show_default=True,
-        help="Base toolchain image tag (must be available locally or in the registry)",
-    )
-    @click.option(
-        "--kos-ports-branch",
-        type=str,
-        default=None,
-        help="kos-ports branch or tag to use instead of the interactive snapshot selection.",
-    )
-    @click.option(
-        "-g",
-        "--gdb",
-        is_flag=True,
-        default=False,
-        help="Build with GDB support",
-    )
-    def main(username, profile, kos_ports_branch, gdb):
-        """Main function to parse command line arguments and call the build function."""
+@click.command()
+@click.option("-u", "--namespace", "--username", "username",
+              required=True, type=str, help="Namespace for the output image")
+@click.option(
+    "-p",
+    "--toolchain-tag",
+    "--profile",
+    "profile",
+    required=False,
+    type=str,
+    default=defaults.DEFAULT_DC_CHAIN_PROFILE,
+    show_default=True,
+    help="Base toolchain image tag (must be available locally or in the registry)",
+)
+@click.option(
+    "--kos-ports-ref",
+    "--kos-ports-branch",
+    "kos_ports_branch",
+    type=str,
+    default=None,
+    help="kos-ports branch or tag to use instead of the interactive snapshot selection.",
+)
+@click.option(
+    "-g",
+    "--gdb",
+    is_flag=True,
+    default=False,
+    help="Build with GDB support",
+)
+def full_image_command(username, profile, kos_ports_branch, gdb):
+    """Build a KOS development image with interactive source selection."""
 
-        sources.validate_ready_context(build_context)
+    with sources.ready_context() as build_context:
         spec = builds.FullImageBuild(
             namespace=username,
             profile=profile,
@@ -189,4 +195,23 @@ def full_image_command(build_context):
             print("Operation cancelled ... ")
             raise SystemExit(1)
 
-    return main
+
+@click.group()
+def main():
+    """Build Docker images for Dreamcast development."""
+
+
+@main.group()
+def build():
+    """Build the compiler toolchain or a complete KOS development image."""
+
+
+build.add_command(toolchain_command, "dc-chain")
+build.add_command(full_image_command, "kos-image")
+
+
+def legacy_notice(command):
+    """Emit one migration notice when a legacy script is executed."""
+    click.echo(
+        f"This script is a compatibility entry point; use `dcdocker build {command}`.", err=True
+    )

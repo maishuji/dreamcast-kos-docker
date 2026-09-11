@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
 
-from dcdocker import cli, defaults, docker, sources
+from dcdocker import defaults, docker, sources
 
 import build_dc_kos_full_image as full_image
 
@@ -20,11 +20,33 @@ class FullImageBuildTests(unittest.TestCase):
     """Drive real menus and inspect the resulting Docker arguments."""
 
     def setUp(self):
-        self.docker = self.enterContext(patch.object(docker.subprocess, "run"))
+        self.contexts = []
+        original_copy = sources.copy_resources
+
+        def copy_context(source, destination):
+            self.contexts.append(destination)
+            original_copy(source, destination)
+
+        self.enterContext(patch.object(sources, "copy_resources", side_effect=copy_context))
+        self.addCleanup(self.assert_contexts_removed)
+        self.docker = self.enterContext(
+            patch.object(docker.subprocess, "run", side_effect=self.check_context)
+        )
         self.http = self.enterContext(patch.object(sources.requests, "get"))
         self.http.return_value = Mock(
             status_code=200, json=Mock(return_value=[{"name": "master"}])
         )
+
+    def assert_contexts_removed(self):
+        """Every CLI exit, including cancellation and discovery failure, releases its context."""
+        for context in self.contexts:
+            self.assertFalse(context.exists(), f"Leaked build context: {context}")
+
+    def check_context(self, command, **_kwargs):
+        """Assert Docker can read every required file while the context is alive."""
+        context = Path(command[-1])
+        for name in defaults.READY_CONTEXT_FILES:
+            self.assertTrue((context / name).is_file())
 
     @staticmethod
     def invoke(args=(), answers="3\n3\n1\n1\n"):
@@ -172,54 +194,58 @@ class FullImageBuildTests(unittest.TestCase):
         self.assertIn("Docker is required", result.output)
         self.assertNotIn("Traceback", result.output)
 
-    def test_build_interruption_preserves_context(self):
+    def test_build_interruption_cleans_context_and_preserves_assets(self):
         self.docker.side_effect = KeyboardInterrupt()
         result = self.invoke()
         self.assertEqual(result.exit_code, 1, result.output)
         self.assertIn("Aborted", result.output)
         context = Path(self.docker.call_args.args[0][-1])
-        self.assertTrue((context / "Dockerfile").is_file())
-        self.assertTrue((context / "apk-retry.sh").is_file())
+        self.assertFalse(context.exists())
+        assets = Path(sources.__file__).parent / "assets/kos-ready"
+        self.assertTrue((assets / "Dockerfile").is_file())
+        self.assertTrue((assets / "apk-retry.sh").is_file())
 
     def test_context_is_independent_of_working_directory(self):
-        expected = Path(full_image.__file__).resolve().parent / "kos-ready"
         with CliRunner().isolated_filesystem():
             # A misleading caller context must never be selected.
             Path("kos-ready").mkdir()
             caller = Path.cwd()
             result = self.invoke()
             self.assertEqual(result.exit_code, 0, result.output)
-            self.assertEqual(Path(self.docker.call_args.args[0][-1]), expected)
+            context = Path(self.docker.call_args.args[0][-1])
+            self.assertNotEqual(context, caller / "kos-ready")
+            self.assertFalse(context.exists())
             self.assertEqual(Path.cwd(), caller)
 
     def test_missing_context_files_fail_before_discovery(self):
         for missing in ("Dockerfile", "apk-retry.sh"):
             with self.subTest(missing=missing), CliRunner().isolated_filesystem():
                 root = Path.cwd()
-                context = root / "kos-ready"
-                context.mkdir()
+                context = root / "assets/kos-ready"
+                context.mkdir(parents=True)
                 for name in ("Dockerfile", "apk-retry.sh"):
                     if name != missing:
                         (context / name).write_text("fixture", encoding="utf-8")
-                with patch.object(full_image, "main", cli.full_image_command(context)):
+                with patch.object(sources.resources, "files", return_value=root):
                     result = self.invoke()
                 self.assertEqual(result.exit_code, 1, result.output)
-                self.assertIn(str(context / missing), result.output)
+                self.assertIn(missing, result.output)
                 self.http.assert_not_called()
                 self.docker.assert_not_called()
 
     def test_context_with_spaces_has_copyable_display(self):
         with CliRunner().isolated_filesystem():
             root = Path.cwd() / "repo with spaces"
-            context = root / "kos-ready"
+            context = root / "assets/kos-ready"
             context.mkdir(parents=True)
             for name in ("Dockerfile", "apk-retry.sh"):
                 (context / name).write_text("fixture", encoding="utf-8")
-            with patch.object(full_image, "main", cli.full_image_command(context)):
+            with patch.object(sources.resources, "files", return_value=root):
                 result = self.invoke()
             self.assertEqual(result.exit_code, 0, result.output)
             command = self.docker.call_args.args[0]
-            self.assertEqual(command[-1], str(context))
+            self.assertFalse(Path(command[-1]).exists())
+            self.assertTrue(context.exists())
             self.assertIn(shlex.join(command), result.output)
 
 
