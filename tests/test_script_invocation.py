@@ -1,5 +1,8 @@
 """Invoke absolute script paths in a separate interpreter outside the checkout."""
 
+# Test method names describe their behavior.
+# pylint: disable=missing-function-docstring
+
 import json
 from pathlib import Path
 import subprocess

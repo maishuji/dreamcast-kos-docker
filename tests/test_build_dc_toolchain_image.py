@@ -1,5 +1,9 @@
 """Regression checks for source selection, GDB support, and build failures."""
 
+# Test method names describe their behavior.
+# pylint: disable=missing-function-docstring
+
+from functools import partial
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
@@ -8,6 +12,8 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
+from dcdocker import defaults, sources
+
 import build_dc_toolchain_image as toolchain
 
 
@@ -15,9 +21,10 @@ class ToolchainBuildTests(unittest.TestCase):
     """Exercise the CLI with real temporary sources and mocked Git/Docker calls."""
 
     def setUp(self):
-        self.workspace = TemporaryDirectory()
-        self.addCleanup(self.workspace.cleanup)
-        self.local_path = Path(self.workspace.name) / "local kos"
+        # unittest owns cleanup through enterContext, including setup failures.
+        # pylint: disable-next=consider-using-with
+        self.workspace = self.enterContext(TemporaryDirectory())
+        self.local_path = Path(self.workspace) / "local kos"
         self.write_checkout(self.local_path)
 
     @staticmethod
@@ -44,7 +51,7 @@ class ToolchainBuildTests(unittest.TestCase):
             args.append("--use-gdb")
         if kos_path is not None:
             args.extend(["--kos-path", str(kos_path)])
-        with patch.object(toolchain.subprocess, "run", side_effect=process_run) as processes:
+        with patch.object(sources.subprocess, "run", side_effect=process_run) as processes:
             result = CliRunner().invoke(toolchain.main, args)
         return result, processes
 
@@ -68,7 +75,7 @@ class ToolchainBuildTests(unittest.TestCase):
                 self.assertEqual(processes.call_count, 2)
                 clone, build = [call.args[0] for call in processes.call_args_list]
                 self.assertEqual(
-                    clone[:-1], ["git", "clone", "--depth", "1", toolchain.KOS_REPOSITORY]
+                    clone[:-1], ["git", "clone", "--depth", "1", defaults.KOS_REPOSITORY]
                 )
                 source = Path(clone[-1])
                 self.assert_build_command(build, source, use_gdb)
@@ -128,7 +135,7 @@ class ToolchainBuildTests(unittest.TestCase):
         processes.assert_called_once()
 
     def test_invalid_local_sources_fail_before_build(self):
-        for source in (Path(self.workspace.name), self.local_path / "missing"):
+        for source in (Path(self.workspace), self.local_path / "missing"):
             with self.subTest(source=source):
                 result, processes = self.run_build(kos_path=source)
                 self.assertNotEqual(result.exit_code, 0)
@@ -149,29 +156,34 @@ class ToolchainBuildTests(unittest.TestCase):
                 with self.subTest(local=local, stage=stage, error=error):
                     owned_sources = []
 
-                    def process_run(command, **_kwargs):
+                    def process_run(command, *, owned, failure_stage, failure_type, **_kwargs):
                         if command[0] == "git":
                             source = Path(command[-1])
-                            owned_sources.append(source)
+                            owned.append(source)
                             self.write_checkout(source)
-                        if command[0] == stage:
-                            raise error()
+                        if command[0] == failure_stage:
+                            raise failure_type()
                         return subprocess.CompletedProcess(command, 0)
 
                     args = ["-u", "test"]
                     if local:
                         args.extend(["--kos-path", str(self.local_path)])
-                    with patch.object(toolchain.subprocess, "run", side_effect=process_run):
+                    simulate = partial(process_run, owned=owned_sources,
+                                       failure_stage=stage, failure_type=error)
+                    with patch.object(sources.subprocess, "run", side_effect=simulate):
                         result = CliRunner().invoke(toolchain.main, args)
                     self.assertEqual(result.exit_code, 1, result.output)
-                    expected = "Aborted" if error is KeyboardInterrupt else f"{stage.title()} is required"
+                    expected = ("Aborted" if error is KeyboardInterrupt
+                                else f"{stage.title()} is required")
                     self.assertIn(expected, result.output)
                     self.assertNotIn("Traceback", result.output)
                     self.assertNotIn("Successfully built", result.output)
                     for source in owned_sources:
                         self.assertFalse(source.parent.exists())
                     self.assertEqual(marker.read_text(encoding="utf-8"), "keep my changes")
-                    self.assertTrue((self.local_path / "utils/kos-chain/docker/Dockerfile").is_file())
+                    self.assertTrue(
+                        (self.local_path / "utils/kos-chain/docker/Dockerfile").is_file()
+                    )
 
     def test_builds_from_an_unrelated_working_directory(self):
         with CliRunner().isolated_filesystem():

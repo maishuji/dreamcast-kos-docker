@@ -1,5 +1,8 @@
 """Full-image CLI behavior with discovery and Docker isolated from the network."""
 
+# Test method names describe their behavior.
+# pylint: disable=missing-function-docstring
+
 from pathlib import Path
 import shlex
 import subprocess
@@ -8,6 +11,8 @@ from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
 
+from dcdocker import cli, defaults, docker, sources
+
 import build_dc_kos_full_image as full_image
 
 
@@ -15,8 +20,8 @@ class FullImageBuildTests(unittest.TestCase):
     """Drive real menus and inspect the resulting Docker arguments."""
 
     def setUp(self):
-        self.docker = self.enterContext(patch.object(full_image.subprocess, "run"))
-        self.http = self.enterContext(patch.object(full_image.requests, "get"))
+        self.docker = self.enterContext(patch.object(docker.subprocess, "run"))
+        self.http = self.enterContext(patch.object(sources.requests, "get"))
         self.http.return_value = Mock(
             status_code=200, json=Mock(return_value=[{"name": "master"}])
         )
@@ -89,8 +94,8 @@ class FullImageBuildTests(unittest.TestCase):
 
     def test_discovery_failures_stop_before_docker(self):
         failures = [
-            (full_image.requests.ConnectionError("offline"), "connection"),
-            (full_image.requests.Timeout("slow service"), "timed out"),
+            (sources.requests.ConnectionError("offline"), "connection"),
+            (sources.requests.Timeout("slow service"), "timed out"),
             (Mock(status_code=404), "HTTP 404"),
             (Mock(status_code=500), "HTTP 500"),
             (Mock(status_code=403), "rate limit"),
@@ -111,7 +116,7 @@ class FullImageBuildTests(unittest.TestCase):
                     self.assertNotIn("Traceback", result.output)
                     self.docker.assert_not_called()
                     self.assertEqual(self.http.call_args.kwargs["timeout"],
-                                     full_image.REQUEST_TIMEOUT)
+                                     defaults.REQUEST_TIMEOUT)
 
     def test_malformed_discovery_shapes_are_reported(self):
         for answers in ("1\n", "3\n1\n", "3\n3\n"):
@@ -196,7 +201,7 @@ class FullImageBuildTests(unittest.TestCase):
                 for name in ("Dockerfile", "apk-retry.sh"):
                     if name != missing:
                         (context / name).write_text("fixture", encoding="utf-8")
-                with patch.object(full_image, "__file__", str(root / "builder.py")):
+                with patch.object(full_image, "main", cli.full_image_command(context)):
                     result = self.invoke()
                 self.assertEqual(result.exit_code, 1, result.output)
                 self.assertIn(str(context / missing), result.output)
@@ -210,7 +215,7 @@ class FullImageBuildTests(unittest.TestCase):
             context.mkdir(parents=True)
             for name in ("Dockerfile", "apk-retry.sh"):
                 (context / name).write_text("fixture", encoding="utf-8")
-            with patch.object(full_image, "__file__", str(root / "builder.py")):
+            with patch.object(full_image, "main", cli.full_image_command(context)):
                 result = self.invoke()
             self.assertEqual(result.exit_code, 0, result.output)
             command = self.docker.call_args.args[0]
