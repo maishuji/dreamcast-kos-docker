@@ -44,7 +44,7 @@ Run these commands from the root of this repository:
 uv sync --locked --no-dev
 ```
 
-Alternatively, run `make create-env`. uv creates `.venv` and installs the build scripts' dependencies from `uv.lock`.
+Alternatively, run `make create-env`. uv creates `.venv`, installs the dependencies from `uv.lock`, and installs this project in editable mode. Both Python scripts now delegate to the shared `dcdocker` package under `src/`; run this setup again after upgrading from the standalone scripts. Keep using the script commands below during this migration.
 
 Run scripts with `uv run --locked --no-dev`; no environment activation is required. If you previously activated `venv`, run `deactivate` before using the new setup. The examples below use `yourname` as a placeholder for your Docker username or image namespace.
 
@@ -56,7 +56,9 @@ make lint
 make test
 ```
 
-`make create-dev-env` runs `uv sync --locked`, which also installs the `dev` dependency group. `make lint` runs Pylint through `uv run --locked`. `make test` discovers and runs the unit tests in `tests/`; Docker calls are mocked, so no Docker daemon or KallistiOS checkout is needed. CI runs lint and tests as separate jobs on pull requests and pushes to `main`, using the same targets.
+`make create-dev-env` runs `uv sync --locked`, which also installs the `dev` dependency group. `make lint` runs Pylint over `src/dcdocker`, both compatibility scripts, and `tests` through `uv run --locked`. `make test` discovers and runs the unit tests in `tests/`; Docker calls are mocked, so no Docker daemon or KallistiOS checkout is needed. CI runs lint and tests as separate jobs on pull requests and pushes to `main`, using the same targets.
+
+The package separates CLI prompts (`cli.py`), build specifications and planning (`builds.py`), source discovery and checkout ownership (`sources.py`), Docker commands (`docker.py`), and Python defaults (`defaults.py`). Build plans can be calculated without network access or subprocesses. The ready-image context remains in `kos-ready/`, supplied explicitly by the full-image script; it is not yet bundled in the installed package. A standalone `dcdocker` command and packaged image assets are planned for the next phase.
 
 Dependencies are declared in `pyproject.toml`, and `uv.lock` pins their resolved versions, including transitive dependencies. Use `uv add <package>` or `uv add --dev <package>` to add dependencies, and commit both files together. The `--locked` flag makes setup fail if the lockfile needs updating; run `uv lock` after editing dependencies manually.
 
@@ -99,7 +101,7 @@ Enter the **number** beside each choice when prompted:
 3. **GLdc:** choose one of the fetched `release/` branches or `master`.
 4. **Confirmation:** review the selected versions and the printed Docker command. Enter `1` for **Yes** to build or `2` for **No** to cancel. Cancellation exits with status 1.
 
-The snapshot menus use the forks configured in the script: `maishuji/KallistiOS`, `maishuji/kos-ports`, and `quentin.cartier.dev/GLdc`. The KOS and kos-ports year menus currently list only 2026 and 2025. `master` selects the repository's moving branch, so later builds can use different source revisions.
+The snapshot menus use the forks configured in [`src/dcdocker/defaults.py`](src/dcdocker/defaults.py): `maishuji/KallistiOS`, `maishuji/kos-ports`, and `quentin.cartier.dev/GLdc`. The KOS and kos-ports year menus currently list only 2026 and 2025. `master` selects the repository's moving branch, so later builds can use different source revisions.
 
 The script remains interactive for KOS, GLdc, and confirmation. It prints the complete `docker build` command before confirmation; you can save that command to reuse the same selections without the menus.
 

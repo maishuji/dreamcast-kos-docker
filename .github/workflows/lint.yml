@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: make create-dev-env
 
-      - name: Run lint
+      - name: Lint package, compatibility scripts, and tests
         run: make lint
 
   tests:
@@ -60,5 +60,5 @@ jobs:
       - name: Install dependencies
         run: make create-dev-env
 
-      - name: Run tests
+      - name: Test shared package and compatibility scripts
         run: make test
