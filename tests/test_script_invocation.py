@@ -16,6 +16,7 @@ import unittest
 SCRIPT_HARNESS = """
 import json
 import runpy
+from pathlib import Path
 import sys
 from unittest.mock import Mock, patch
 
@@ -26,6 +27,9 @@ response = Mock(status_code=200, json=Mock(return_value=[{'name': 'master'}]))
 def run_build(command, **kwargs):
     if command[:2] != ['docker', 'build']:
         raise AssertionError('Unexpected subprocess: ' + repr(command))
+    if any(arg.startswith('snapshot_kos=') for arg in command):
+        for name in ('Dockerfile', 'apk-retry.sh'):
+            assert (Path(command[-1]) / name).is_file()
     print('CAPTURED_BUILD=' + json.dumps(command))
 
 with patch('requests.get', return_value=response), patch('subprocess.run', side_effect=run_build):
@@ -46,7 +50,7 @@ class ScriptInvocationTests(unittest.TestCase):
             dockerfile.parent.mkdir(parents=True)
             dockerfile.write_text("ARG include_gdb=0\n", encoding="utf-8")
             scripts = (
-                ("build_dc_kos_full_image.py", [], repository / "kos-ready"),
+                ("build_dc_kos_full_image.py", [], None),
                 ("build_dc_toolchain_image.py", ["--kos-path", str(local_kos)], local_kos),
             )
             for filename, options, expected_context in scripts:
@@ -61,11 +65,12 @@ class ScriptInvocationTests(unittest.TestCase):
                     captured = next(line for line in result.stdout.splitlines()
                                     if line.startswith("CAPTURED_BUILD="))
                     command = json.loads(captured.split("=", 1)[1])
-                    self.assertEqual(Path(command[-1]), expected_context)
+                    self.assertEqual(result.stderr.count("compatibility entry point"), 1)
+                    if expected_context is not None:
+                        self.assertEqual(Path(command[-1]), expected_context)
                     self.assertTrue(dockerfile.is_file())
                     if filename == "build_dc_kos_full_image.py":
-                        for name in ("Dockerfile", "apk-retry.sh"):
-                            self.assertTrue((expected_context / name).is_file())
+                        self.assertFalse(Path(command[-1]).exists())
 
 
 if __name__ == "__main__":

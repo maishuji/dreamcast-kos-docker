@@ -8,6 +8,9 @@ dependencies = [
     "requests==2.32.4",
 ]
 
+[project.scripts]
+dcdocker = "dcdocker.cli:main"
+
 [dependency-groups]
 dev = [
     "pylint==4.0.8",
@@ -25,7 +28,6 @@ include = [
     "/src/dcdocker",
     "/build_dc_toolchain_image.py",
     "/build_dc_kos_full_image.py",
-    "/kos-ready",
     "/kos-alpine",
     "/tests",
     "/Makefile",

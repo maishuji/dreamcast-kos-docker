@@ -1,6 +1,7 @@
 """Discovery, checkout ownership, and source-layout validation."""
 
 from contextlib import contextmanager
+from importlib import resources
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
@@ -172,5 +173,33 @@ def validate_ready_context(build_context):
         if not (build_context / filename).is_file():
             raise click.ClickException(
                 f"Missing build context file: {build_context / filename}. "
-                "Restore the complete kos-ready directory beside this script."
+                "Reinstall dreamcast-kos-docker to restore its packaged build assets."
             )
+
+
+def copy_resources(source, destination):
+    """Copy a resource tree using Traversable operations supported by Python 3.11."""
+    destination.mkdir()
+    for entry in source.iterdir():
+        target = destination / entry.name
+        if entry.is_dir():
+            copy_resources(entry, target)
+        else:
+            target.write_bytes(entry.read_bytes())
+
+
+@contextmanager
+def ready_context():
+    """Keep a complete, owned Docker context alive until the build exits."""
+    with TemporaryDirectory(prefix="dcdocker-kos-ready-") as directory:
+        context = Path(directory) / "kos-ready"
+        try:
+            source = resources.files("dcdocker").joinpath("assets", "kos-ready")
+            copy_resources(source, context)
+        except OSError as error:
+            raise click.ClickException(
+                f"Cannot prepare packaged build assets: {error}. "
+                "Reinstall dreamcast-kos-docker and check temporary-directory access."
+            ) from error
+        validate_ready_context(context)
+        yield context
