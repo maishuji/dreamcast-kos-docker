@@ -141,6 +141,47 @@ class ToolchainBuildTests(unittest.TestCase):
         self.assertIn("fresh upstream checkout by default", result.output)
         self.assertIn("--kos-path", result.output)
 
+    def test_missing_tools_and_interruption_preserve_source_ownership(self):
+        marker = self.local_path / "local-changes.txt"
+        marker.write_text("keep my changes", encoding="utf-8")
+        for local, stage in ((False, "git"), (False, "docker"), (True, "docker")):
+            for error in (FileNotFoundError, KeyboardInterrupt):
+                with self.subTest(local=local, stage=stage, error=error):
+                    owned_sources = []
+
+                    def process_run(command, **_kwargs):
+                        if command[0] == "git":
+                            source = Path(command[-1])
+                            owned_sources.append(source)
+                            self.write_checkout(source)
+                        if command[0] == stage:
+                            raise error()
+                        return subprocess.CompletedProcess(command, 0)
+
+                    args = ["-u", "test"]
+                    if local:
+                        args.extend(["--kos-path", str(self.local_path)])
+                    with patch.object(toolchain.subprocess, "run", side_effect=process_run):
+                        result = CliRunner().invoke(toolchain.main, args)
+                    self.assertEqual(result.exit_code, 1, result.output)
+                    expected = "Aborted" if error is KeyboardInterrupt else f"{stage.title()} is required"
+                    self.assertIn(expected, result.output)
+                    self.assertNotIn("Traceback", result.output)
+                    self.assertNotIn("Successfully built", result.output)
+                    for source in owned_sources:
+                        self.assertFalse(source.parent.exists())
+                    self.assertEqual(marker.read_text(encoding="utf-8"), "keep my changes")
+                    self.assertTrue((self.local_path / "utils/kos-chain/docker/Dockerfile").is_file())
+
+    def test_builds_from_an_unrelated_working_directory(self):
+        with CliRunner().isolated_filesystem():
+            caller = Path.cwd()
+            for local in (False, True):
+                with self.subTest(local=local):
+                    result, _processes = self.run_build(kos_path=self.local_path if local else None)
+                    self.assertEqual(result.exit_code, 0, result.output)
+                    self.assertEqual(Path.cwd(), caller)
+
 
 if __name__ == "__main__":
     unittest.main()

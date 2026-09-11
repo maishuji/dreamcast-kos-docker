@@ -64,7 +64,7 @@ Both scripts create local images. They do not log in to a registry or push image
 
 ### Build a Ready-to-Use Image
 
-Run this script **from the root of this repository**, because it uses `./kos-ready/` as the Docker build context. A local KallistiOS checkout is not required; the Dockerfile clones the sources inside the image.
+The script resolves the `kos-ready/` Docker build context beside its own file, so it works from any working directory. Keep both `kos-ready/Dockerfile` and `kos-ready/apk-retry.sh` in the checkout. A local KallistiOS checkout is not required; the Dockerfile clones the sources inside the image. The examples below run from the repository root.
 
 ```sh
 # Use the default toolchain profile, 16.2.0.
@@ -75,6 +75,13 @@ uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname -p 16.2
 
 # Optionally select a kos-ports branch and skip its snapshot menu.
 uv run --locked --no-dev python ./build_dc_kos_full_image.py -u yourname --kos-ports-branch feature/my-branch
+```
+
+After installing dependencies, you can invoke either script from another directory using the checkout's Python environment and absolute script path. For example:
+
+```sh
+/path/to/dreamcast-kos-docker/.venv/bin/python \
+  /path/to/dreamcast-kos-docker/build_dc_kos_full_image.py --username yourname
 ```
 
 | Option | Required | Meaning |
@@ -95,6 +102,8 @@ Enter the **number** beside each choice when prompted:
 The snapshot menus use the forks configured in the script: `maishuji/KallistiOS`, `maishuji/kos-ports`, and `quentin.cartier.dev/GLdc`. The KOS and kos-ports year menus currently list only 2026 and 2025. `master` selects the repository's moving branch, so later builds can use different source revisions.
 
 The script remains interactive for KOS, GLdc, and confirmation. It prints the complete `docker build` command before confirmation; you can save that command to reuse the same selections without the menus.
+
+If discovery fails, the script reports the affected source and the connection, timeout, HTTP, or response-format problem and exits with status 1. A successful lookup with no matching choices also exits clearly; rerun with another selection or check the source repository. EOF or Ctrl-C aborts without starting a build when entered at a prompt. Missing build-context files or Docker produce an actionable error instead of a traceback.
 
 `--kos-ports-branch` is passed unchanged to the existing Docker build argument `snapshot_kosports`. For a direct build, use `docker build --build-arg snapshot_kosports=feature/my-branch -t yourname/dc-kos-image:custom ./kos-ready/`. Omitting that build argument uses `master`.
 
