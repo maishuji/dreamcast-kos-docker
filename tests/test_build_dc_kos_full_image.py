@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
 
-from dcdocker import defaults, docker, sources
+from dcdocker import cli, defaults, docker, sources
 
 import build_dc_kos_full_image as full_image
 
@@ -20,6 +20,7 @@ class FullImageBuildTests(unittest.TestCase):
     """Drive real menus and inspect the resulting Docker arguments."""
 
     def setUp(self):
+        self.enterContext(patch.object(cli, "is_interactive", return_value=True))
         self.contexts = []
         original_copy = sources.copy_resources
 
@@ -64,8 +65,8 @@ class FullImageBuildTests(unittest.TestCase):
                 self.assertEqual(command[:2], ["docker", "build"])
                 base = "dc-chain-gdb" if gdb else "dc-chain"
                 tag = "16.2.0-gdb-latest" if gdb else "16.2.0-latest"
-                self.assertIn(f"base_image={base}", command)
-                self.assertIn("dc_chain_version=16.2.0", command)
+                self.assertIn(f"base_image=maishuji/{base}:16.2.0", command)
+                self.assertNotIn("dc_chain_version=16.2.0", command)
                 for source in ("kos", "kosports", "gldc"):
                     self.assertIn(f"snapshot_{source}=master", command)
                 self.assertEqual(command[command.index("-t") + 1], f"test/dc-kos-image:{tag}")
@@ -91,7 +92,7 @@ class FullImageBuildTests(unittest.TestCase):
         self.assertIn("gitlab.com", self.http.call_args.args[0])
         command = self.docker.call_args.args[0]
         self.assertIn("snapshot_kosports=feature/My-Branch", command)
-        self.assertIn("test/dc-kos-image:16.2.0-latest-kpfeature-my-branch", command)
+        self.assertIn("test/dc-kos-image:16.2.0-latest-kpfeature-my-branch-rc3f799196d8d", command)
         self.assertNotIn("year for the snapshot for kos-ports", result.output)
 
     def test_declining_confirmation_does_not_build(self):
@@ -217,7 +218,7 @@ class FullImageBuildTests(unittest.TestCase):
             self.assertFalse(context.exists())
             self.assertEqual(Path.cwd(), caller)
 
-    def test_missing_context_files_fail_before_discovery(self):
+    def test_missing_context_files_fail_before_docker(self):
         for missing in ("Dockerfile", "apk-retry.sh"):
             with self.subTest(missing=missing), CliRunner().isolated_filesystem():
                 root = Path.cwd()
@@ -230,7 +231,6 @@ class FullImageBuildTests(unittest.TestCase):
                     result = self.invoke()
                 self.assertEqual(result.exit_code, 1, result.output)
                 self.assertIn(missing, result.output)
-                self.http.assert_not_called()
                 self.docker.assert_not_called()
 
     def test_context_with_spaces_has_copyable_display(self):

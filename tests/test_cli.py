@@ -12,6 +12,9 @@ from dcdocker import cli, sources
 class CommandTests(unittest.TestCase):
     """New spellings and legacy aliases select the same shared builds."""
 
+    def setUp(self):
+        self.enterContext(patch.object(cli, "is_interactive", return_value=True))
+
     def test_help_at_every_level_has_no_side_effects(self):
         """Help must not need Git, Docker, HTTP, stdin, or resource extraction."""
         for boundary in ("subprocess.run", "requests.get", "builtins.input",
@@ -52,9 +55,9 @@ class CommandTests(unittest.TestCase):
                     )
                     self.assertEqual(result.exit_code, 0, result.output)
                     command = execute.call_args.args[0]
-                    self.assertIn("dc_chain_version=custom", command)
+                    self.assertIn("base_image=maishuji/dc-chain-gdb:custom", command)
                     self.assertIn("snapshot_kosports=feature/branch", command)
-                    self.assertIn("base_image=dc-chain-gdb", command)
+                    self.assertIn("base_image=maishuji/dc-chain-gdb:custom", command)
 
     def test_invalid_input_fails_before_building(self):
         """Usage errors remain exit 2 without external operations."""

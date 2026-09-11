@@ -149,19 +149,23 @@ class PackageInstallTests(unittest.TestCase):
                 cwd=workspace, env=dict(env, PATH=""),
             ).stdout)
         self.run_command([str(python), "-m", "dcdocker", "--help"], cwd=workspace, env=env)
-        env["DCDOCKER_ALLOW_DISCOVERY"] = "1"
+        env["DCDOCKER_ALLOW_DISCOVERY"] = "0"
         self.check_builds(venv / "bin/dcdocker", workspace, env)
+        self.check_automation(venv / "bin/dcdocker", workspace, env)
 
     def check_builds(self, executable, workspace, env):
         """Exercise real CLI/process boundaries without a Docker daemon or remote Git."""
         for gdb in (False, True):
             args = [str(executable), "build", "kos-image", "--namespace", "test",
-                    "--toolchain-tag", "16.2.0", "--kos-ports-ref", "master"]
+                    "--toolchain-tag", "16.2.0", "--kos-ports-ref", "master",
+                    "--kos-ref", "master", "--gldc-ref", "master", "--non-interactive"]
             if gdb:
                 args.append("--gdb")
             self.run_command(args, cwd=workspace, env=env, input_text="3\n1\n1\n")
             captured = json.loads(Path(env["DCDOCKER_CAPTURE"]).read_text(encoding="utf-8"))
-            self.assertIn(f"base_image=dc-chain{'-gdb' if gdb else ''}", captured["args"])
+            self.assertIn(
+                f"base_image=maishuji/dc-chain{'-gdb' if gdb else ''}:16.2.0", captured["args"]
+            )
             self.assertIn("COPY --chmod=755 apk-retry.sh", captured["files"]["Dockerfile"])
             self.assertIn("#!/bin/sh", captured["files"]["apk-retry.sh"])
             self.assertFalse(Path(captured["args"][-1]).exists())
@@ -184,6 +188,26 @@ class PackageInstallTests(unittest.TestCase):
             if not selection:
                 self.assertFalse(Path(captured["args"][-1]).exists())
             self.assertTrue(dockerfile.is_file())
+
+    def check_automation(self, executable, workspace, env):
+        """Installed custom bases and offline previews use the packaged implementation."""
+        explicit = ["--kos-ref", "master", "--kos-ports-ref", "master", "--gldc-ref", "master"]
+        base = "registry.example:5000/team/toolchain@sha256:" + "a" * 64
+        args = [str(executable), "build", "kos-image", "--namespace", "output", *explicit,
+                "--base-image", base, "--image-tag", "chosen", "--gdb"]
+        self.run_command([*args, "--non-interactive"], cwd=workspace, env=env)
+        captured = json.loads(Path(env["DCDOCKER_CAPTURE"]).read_text(encoding="utf-8"))
+        self.assertIn("base_image=" + base, captured["args"])
+        self.assertIn("output/dc-kos-image:chosen", captured["args"])
+        self.assertIn("FROM ${base_image}", captured["files"]["Dockerfile"])
+        self.assertNotIn("dc_chain_version", captured["files"]["Dockerfile"])
+        capture = Path(env["DCDOCKER_CAPTURE"])
+        capture.unlink()
+        for command in ([*args, "--dry-run"],
+                        [str(executable), "build", "dc-chain", "-u", "test", "--dry-run"]):
+            preview = self.run_command(command, cwd=workspace, env=dict(env, PATH=""))
+            self.assertIn("Preview only", preview.stdout)
+            self.assertFalse(capture.exists())
 
 
 if __name__ == "__main__":

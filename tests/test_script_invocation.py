@@ -50,7 +50,9 @@ class ScriptInvocationTests(unittest.TestCase):
             dockerfile.parent.mkdir(parents=True)
             dockerfile.write_text("ARG include_gdb=0\n", encoding="utf-8")
             scripts = (
-                ("build_dc_kos_full_image.py", [], None),
+                ("build_dc_kos_full_image.py", ["--kos-ref", "master", "--kos-ports-ref",
+                                                   "master", "--gldc-ref", "master",
+                                                   "--non-interactive"], None),
                 ("build_dc_toolchain_image.py", ["--kos-path", str(local_kos)], local_kos),
             )
             for filename, options, expected_context in scripts:

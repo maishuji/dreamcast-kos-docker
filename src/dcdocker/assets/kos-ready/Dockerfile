@@ -2,15 +2,13 @@
 # and can be used to compile Dreamcast homebrew applications. The image is based on the dc-chain image
 
 # Build Arguments
-ARG base_image=dc-chain
-ARG dc_chain_version=16.2.0
+ARG base_image=maishuji/dc-chain:16.2.0
 ARG snapshot_kos=master
 ARG snapshot_kosports=master
 ARG snapshot_gldc=master
 
-# Base image : Kos toolchain. The tag corresponds to the version of the toolchain (profile) used.
-# Can be either dc-chain or dc-chain-gdb depending on build requirements
-FROM maishuji/${base_image}:${dc_chain_version}
+# Complete toolchain image reference: normal/GDB variant, custom registry, tag or digest.
+FROM ${base_image}
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.11 /uv /uvx /usr/local/bin/
 
@@ -47,7 +45,7 @@ SHELL ["/bin/bash", "-c"]
 
 RUN echo "Cloning branch: ${SNAPSHOT_KOS}" && \
     echo "Cloning branch: $SNAPSHOT_KOS " && \
-    git clone --depth 1 --branch $SNAPSHOT_KOS https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
+    git clone --depth 1 --branch "$SNAPSHOT_KOS" https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
 
 # Configuring environ.sh
 RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
@@ -56,7 +54,7 @@ RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
 
 # Kos-ports
 RUN echo "Checkout kos-ports" && source /opt/toolchains/dc/kos/environ.sh && \
-git clone --branch $snapshot_kosports --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports && \
+git clone --branch "$snapshot_kosports" --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports && \
 cd /opt/toolchains/dc/kos-ports/libGL && \
 sed -i 's|https://gitlab.com/simulant/GLdc.git|https://gitlab.com/quentin.cartier.dev/GLdc.git|g' Makefile && \
 echo "new3" && \
