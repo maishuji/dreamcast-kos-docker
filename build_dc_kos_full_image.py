@@ -2,7 +2,9 @@
 This script is used to build a docker image with ready to use for Dreamcast development.
 """
 
+from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 
@@ -10,6 +12,48 @@ import click
 import requests
 
 REQUEST_TIMEOUT = 30
+
+
+def fetch_ref_names(url, source, key, prefix=""):
+    """Read a provider's ref list, distinguishing service errors from empty results."""
+    try:
+        response = requests.get(url, timeout=REQUEST_TIMEOUT)
+    except requests.Timeout as error:
+        raise click.ClickException(
+            f"Fetching {source} refs timed out. Try again later ({url})."
+        ) from error
+    except requests.RequestException as error:
+        raise click.ClickException(
+            f"Could not fetch {source} refs. Check your connection and try again ({url})."
+        ) from error
+
+    if response.status_code != 200:
+        guidance = (
+            "Check service access or rate limits and try again later."
+            if response.status_code in (403, 429)
+            else "Check the repository URL and service availability."
+        )
+        raise click.ClickException(
+            f"Could not fetch {source} refs (HTTP {response.status_code}). {guidance} ({url})"
+        )
+    try:
+        refs = response.json()
+    except ValueError as error:
+        raise click.ClickException(
+            f"Invalid JSON while fetching {source} refs. Try again later ({url})."
+        ) from error
+    if not isinstance(refs, list) or any(
+        not isinstance(ref, dict)
+        or not isinstance(ref.get(key), str)
+        or not ref[key].startswith(prefix)
+        or not ref[key][len(prefix):]
+        for ref in refs
+    ):
+        raise click.ClickException(
+            f"Unexpected response while fetching {source} refs. "
+            f"Expected a list of named refs ({url})."
+        )
+    return [ref[key][len(prefix):] for ref in refs]
 
 
 # Function to filter tags that end with '24'
@@ -43,12 +87,8 @@ def fetch_snapshot_kos_tags(year):
         <str>[]: List of tags that end with the last two digits of the specified year.
     """
     url = "https://api.github.com/repos/maishuji/KallistiOS/git/refs/tags"
-    response = requests.get(url, timeout=REQUEST_TIMEOUT)
-    if response.status_code == 200:
-        tags = [ref["ref"].replace("refs/tags/", "") for ref in response.json()]
-        return filter_tags_by_year(tags, year)
-    print("Failed to fetch tags from KallistiOS.")
-    return []
+    tags = fetch_ref_names(url, "KallistiOS", "ref", "refs/tags/")
+    return filter_tags_by_year(tags, year)
 
 
 # Function to fetch tags from the GitHub repository for KallistiOS, and include master
@@ -62,12 +102,8 @@ def fetch_snapshot_kosports_tags(year):
         <str>[]: The list of tags that end with the last two digits of the specified year.
     """
     url = "https://api.github.com/repos/maishuji/kos-ports/git/refs/tags"
-    response = requests.get(url, timeout=REQUEST_TIMEOUT)
-    if response.status_code == 200:
-        tags = [ref["ref"].replace("refs/tags/", "") for ref in response.json()]
-        return filter_tags_by_year(tags, year)
-    print("Failed to fetch tags from KallistiOS.")
-    return []
+    tags = fetch_ref_names(url, "kos-ports", "ref", "refs/tags/")
+    return filter_tags_by_year(tags, year)
 
 
 # Function to fetch branches from the GitLab repository
@@ -78,18 +114,9 @@ def fetch_release_branches_gldc():
         <str>[]: List of release branches or master branch.
     """
     url = "https://gitlab.com/api/v4/projects/quentin.cartier.dev%2FGLdc/repository/branches"
-    response = requests.get(url, timeout=REQUEST_TIMEOUT)
-    if response.status_code == 200:
-        branches = [branch["name"] for branch in response.json()]
-        # Only suggest the release branches or the master branch
-        filtered_branches = [
-            branch
-            for branch in branches
-            if branch.startswith("release/") or branch == "master"
-        ]
-        return filtered_branches
-    print("Failed to fetch branches.")
-    return []
+    branches = fetch_ref_names(url, "GLdc", "name")
+    return [branch for branch in branches
+            if branch.startswith("release/") or branch == "master"]
 
 
 # Function to prompt user for selection from a list of options
@@ -103,6 +130,11 @@ def prompt_choice(prompt, choices):
     Returns:
         str: Selected choice from the list.
     """
+    if not choices:
+        raise click.ClickException(
+            f"No matching choices available: {prompt.strip()} "
+            "Try another selection or check the source repository."
+        )
     print(prompt)
     for i, choice in enumerate(choices, 1):
         print(f"{i}. {choice}")
@@ -164,15 +196,10 @@ def choose_snapshot_gldc():
     """
     Choose which release branch to use for GLdc
     """
-    branches = fetch_release_branches_gldc()
-    if branches:
-        snapshot_gldc = prompt_choice(
-            "\nChoose a release branch for GLdc (master for latest):", branches
-        )
-    else:
-        print("No branches found. Exiting...")
-        sys.exit(1)
-    return snapshot_gldc
+    return prompt_choice(
+        "\nChoose a release branch for GLdc (master for latest):",
+        fetch_release_branches_gldc(),
+    )
 
 
 def print_settings(settings):
@@ -189,7 +216,7 @@ def print_settings(settings):
     print(f"snapshot_kos:        \t\t {settings['snapshot_kos']}")
     print(f"snapshot_kos-ports:  \t\t {settings['snapshot_kosports']}")
     print(f"snapshot_gldc branch:\t\t {settings['snapshot_gldc']}")
-    print("\nRunning docker command:\n\t", " ".join(settings["docker_build_command"]))
+    print("\nRunning docker command:\n\t", shlex.join(settings["docker_build_command"]))
     print("--------------------------------------")
 
 
@@ -219,6 +246,14 @@ def print_settings(settings):
 )
 def main(username, profile, kos_ports_branch, gdb):
     """Main function to parse command line arguments and call the build function."""
+
+    build_context = Path(__file__).resolve().parent / "kos-ready"
+    for filename in ("Dockerfile", "apk-retry.sh"):
+        if not (build_context / filename).is_file():
+            raise click.ClickException(
+                f"Missing build context file: {build_context / filename}. "
+                "Restore the complete kos-ready directory beside this script."
+            )
 
     snapshot_kos = choose_snapshot_kos()
     snapshot_kosports = kos_ports_branch or choose_snapshot_kosports()
@@ -262,7 +297,7 @@ def main(username, profile, kos_ports_branch, gdb):
         f"snapshot_gldc={snapshot_gldc}",
         "-t",
         f"{username}/dc-kos-image:{tag}",
-        "./kos-ready/",
+        str(build_context),
     ]
 
     print_settings(
@@ -281,11 +316,15 @@ def main(username, profile, kos_ports_branch, gdb):
         print("Running ...")
         # Execute the Docker build command
         try:
-            subprocess.run(docker_build_command, check=True)
+            subprocess.run(docker_build_command, check=True, shell=False)
         except subprocess.CalledProcessError as process_error:
             raise click.ClickException(
                 f"Docker build failed (exit code {process_error.returncode}). "
                 "See the Docker output above for details."
+            ) from process_error
+        except FileNotFoundError as process_error:
+            raise click.ClickException(
+                "Docker is required to build the image. Install Docker and try again."
             ) from process_error
     else:
         print("Operation cancelled ... ")
