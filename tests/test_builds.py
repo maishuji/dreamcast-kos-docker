@@ -38,20 +38,19 @@ class BuildPlanTests(unittest.TestCase):
         """Preserve legacy tag shapes for all combinations of snapshot selections."""
         for gdb in (False, True):
             for kos in ("master", "01MAR25"):
-                for ports in ("master", "feature/My-Branch"):
+                for ports in ("master", "02MAR25"):
                     for gldc in ("master", "release/03MAR25"):
                         with self.subTest(gdb=gdb, kos=kos, ports=ports, gldc=gldc):
                             spec = builds.FullImageBuild("test", "16.2.0", kos, ports, gldc, gdb)
                             plan = builds.plan_full_image(spec, Path("/context with spaces"))
                             tag = "16.2.0-" + ("gdb-" if gdb else "")
                             tag += "latest" if kos == "master" else "01mar25"
-                            tag += "" if ports == "master" else "-kpfeature-my-branch"
+                            tag += "" if ports == "master" else "-kp02mar25"
                             tag += "" if gldc == "master" else "-gl03mar25"
                             self.assertEqual(plan.image, f"test/dc-kos-image:{tag}")
                             self.assertEqual(plan.command, (
                                 "docker", "build", "--build-arg",
-                                f"base_image=dc-chain{'-gdb' if gdb else ''}",
-                                "--build-arg", "dc_chain_version=16.2.0",
+                                f"base_image=maishuji/dc-chain{'-gdb' if gdb else ''}:16.2.0",
                                 "--build-arg", f"snapshot_kos={kos}",
                                 "--build-arg", f"snapshot_kosports={ports}",
                                 "--build-arg", f"snapshot_gldc={gldc}",
@@ -75,8 +74,9 @@ class DockerExecutionTests(unittest.TestCase):
     def test_literal_arguments_survive_display_and_execution(self):
         """Spaces, quotes, dollars, and backticks stay in single argument values."""
         ref = "feature/literal '$HOME' `text`; echo example"
-        spec = builds.FullImageBuild("test", kos_ports_ref=ref)
-        plan = builds.plan_full_image(spec, Path("/context with 'quotes'"))
+        command = docker.build_command("test/image:tag", Path("/context with 'quotes'"),
+                                       (("snapshot_kosports", ref),))
+        plan = builds.BuildPlan("test/image:tag", command)
         self.assertEqual(shlex.split(docker.display_command(plan.command)), list(plan.command))
         with patch.object(docker.subprocess, "run") as run:
             docker.execute_build(plan.command)

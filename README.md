@@ -83,7 +83,7 @@ Both build commands create local images. They do not log in to a registry or pus
 The command uses its packaged Docker context from any working directory. A local KallistiOS checkout is not required; the Dockerfile clones the sources inside the image.
 
 ```sh
-# Use the default toolchain profile, 16.2.0.
+# Interactive source selection in a terminal; default toolchain tag 16.2.0.
 uv run --locked --no-dev dcdocker build kos-image --namespace yourname
 
 # Or select a toolchain image tag explicitly.
@@ -98,8 +98,28 @@ uv run --locked --no-dev dcdocker build kos-image -u yourname --kos-ports-ref fe
 | `-u`, `--namespace`, `--username` | Yes | Namespace for the resulting `dc-kos-image` image. |
 | `--toolchain-tag`, `-p`, `--profile` | No | Base toolchain image tag; defaults to `16.2.0`. |
 | `-g`, `--gdb` | No | Use the `dc-chain-gdb` base image and add `gdb-` after the profile in the output tag. |
-| `--kos-ports-ref`, `--kos-ports-branch` | No | kos-ports branch or tag to check out. When omitted, use the interactive snapshot menu. |
+| `--kos-ref` | For automation | KOS branch or tag; skips its source menu and discovery request. |
+| `--kos-ports-ref`, `--kos-ports-branch` | For automation | kos-ports branch or tag; skips its source menu and discovery request. |
+| `--gldc-ref` | For automation | GLdc branch or tag; skips its source menu and discovery request. |
+| `--base-image` | No | Complete base reference, including registry/port, tag or digest. Conflicts with an explicitly supplied `--toolchain-tag`, `--profile`, or `-p`. |
+| `--image-tag` | For untagged/digest-only custom bases | Output tag override; independent of the base tag. |
+| `--non-interactive` | No | Require all three refs and execute without reading stdin or confirming. |
+| `--yes` | No | Skip final confirmation only; missing refs still require terminal menus. |
+| `--dry-run` | No | Offline preview requiring all three refs; no prompts, HTTP, Git, Docker, or temporary context. |
 | `--help` | No | Display command-line help and exit. |
+
+For a fully specified build from a terminal or CI:
+
+```sh
+uv run --locked --no-dev dcdocker build kos-image --namespace yourname \
+  --kos-ref master --kos-ports-ref master --gldc-ref master --non-interactive
+
+# Preview the same build without contacting GitHub, GitLab or Docker.
+uv run --locked --no-dev dcdocker build kos-image --namespace yourname \
+  --kos-ref master --kos-ports-ref master --gldc-ref master --dry-run
+```
+
+Explicit refs bypass their discovery requests. Execution may still need network access for Git clones inside Docker, packages, and base images. Refs initially support branches/tags containing ASCII letters, digits, dots, underscores, slashes and hyphens. They must start with a letter, digit or underscore and cannot contain empty/dot-prefixed components, `..`, a trailing dot, or `.lock` component suffixes. Arbitrary commit checkout is not implemented: a commit hash is not an immutable-source guarantee with the current branch/tag recipe.
 
 Enter the **number** beside each choice when prompted:
 
@@ -110,13 +130,24 @@ Enter the **number** beside each choice when prompted:
 
 The snapshot menus use the forks configured in [`src/dcdocker/defaults.py`](src/dcdocker/defaults.py): `maishuji/KallistiOS`, `maishuji/kos-ports`, and `quentin.cartier.dev/GLdc`. The KOS and kos-ports year menus currently list only 2026 and 2025. `master` selects the repository's moving branch, so later builds can use different source revisions.
 
-The full-image command remains interactive for KOS, GLdc, and confirmation. Explicit KOS/GLdc refs, noninteractive mode, dry-run, and a complete custom base-image option are planned for the next phase. The printed Docker command contains a temporary context path that is removed after this invocation; repeat builds through the CLI or use the direct-Docker recipe path below.
+On a terminal, only omitted refs are prompted for. Without a terminal, all three refs are required, plus `--non-interactive` or `--yes` to execute. `--yes` skips confirmation but does not choose missing refs. Dry-run always requires explicit refs and performs no source discovery or external execution, even on a terminal.
+
+The printed Docker command uses an owned context that is removed after execution. Dry-run displays `<packaged-context>` or `<fresh-kos>` placeholders instead of creating directories. It reports unresolved commits and unverified base/source availability; it cannot prove that a build will succeed. Repeat builds through the CLI or use the direct-Docker recipe path below.
 
 If discovery fails, the script reports the affected source and the connection, timeout, HTTP, or response-format problem and exits with status 1. A successful lookup with no matching choices also exits clearly; rerun with another selection or check the source repository. EOF or Ctrl-C aborts without starting a build when entered at a prompt. Missing build-context files or Docker produce an actionable error instead of a traceback.
 
 `--kos-ports-branch` is passed unchanged to the existing Docker build argument `snapshot_kosports`. For a direct build, use `docker build --build-arg snapshot_kosports=feature/my-branch -t yourname/dc-kos-image:custom ./src/dcdocker/assets/kos-ready/`. Omitting that build argument uses `master`.
 
-**Selecting the base image:** `--toolchain-tag` (or its legacy alias `--profile`) is passed as the Docker build argument `dc_chain_version`. The [`src/dcdocker/assets/kos-ready/Dockerfile`](src/dcdocker/assets/kos-ready/Dockerfile) uses `FROM maishuji/${base_image}:${dc_chain_version}`, with `base_image=dc-chain` normally or `base_image=dc-chain-gdb` when `--gdb` is supplied. The selected image tag must be available locally or from the registry. `--namespace` only names the output image; it does not change this base-image namespace.
+**Selecting the base image:** the CLI resolves the default to `maishuji/dc-chain:<toolchain-tag>` or `maishuji/dc-chain-gdb:<toolchain-tag>` and passes that complete reference as Docker's `base_image` argument. The [Dockerfile](src/dcdocker/assets/kos-ready/Dockerfile) now uses `ARG base_image=maishuji/dc-chain:16.2.0` and `FROM ${base_image}`. Its old `dc_chain_version` argument has been removed. `--namespace` names only the output image.
+
+For direct Docker builds, use a complete base reference:
+
+```sh
+docker build --build-arg base_image=yourname/dc-chain:16.2.0 \
+  --build-arg snapshot_kos=master --build-arg snapshot_kosports=master \
+  --build-arg snapshot_gldc=master -t yourname/dc-kos-image:custom \
+  ./src/dcdocker/assets/kos-ready/
+```
 
 ### Build the Toolchain (Optional)
 
@@ -149,53 +180,57 @@ uv run --locked --no-dev dcdocker build dc-chain -u yourname -p 16.2.0 --kos-pat
 | `-p`, `--profile` | No | Toolchain build profile and output image tag; defaults to `16.2.0`. |
 | `-g`, `--gdb`, `--use-gdb` | No | Include GDB using the upstream `include_gdb=1` build argument; output `<username>/dc-chain-gdb:<profile>`. |
 | `--kos-path` | No | Use an existing local KallistiOS source directory instead of a fresh upstream checkout. No updates are fetched. |
+| `--image-tag` | No | Override the output tag while keeping the selected source profile. |
+| `--non-interactive` | No | Explicitly request execution without stdin (toolchain builds already have no menus). |
+| `--dry-run` | No | Print inputs and planned clone/build commands without executing them. |
 | `--help` | No | Display command-line help and exit. |
 
-This command starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. Without `--use-gdb`, it passes `include_gdb=0` and produces `<username>/dc-chain:<profile>`.
+Unless `--dry-run` is supplied, this command starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. Without `--use-gdb`, it passes `include_gdb=0` and produces `<username>/dc-chain:<profile>`.
 
 With `--use-gdb`, it passes `include_gdb=1` and builds the toolchain and GDB together in a single image, `<username>/dc-chain-gdb:<profile>`. To also create an image without GDB, run the command separately without the flag. GDB builds require a KallistiOS Dockerfile that declares `ARG include_gdb`; update your checkout if the script reports that this argument is unsupported.
 
 ```sh
 uv run --locked --no-dev dcdocker build dc-chain -u yourname -p 16.2.0 --gdb
+
+# Offline preview; output tag differs from the selected profile.
+uv run --locked --no-dev dcdocker build dc-chain -u yourname -p 16.2.0 \
+  --image-tag my-toolchain --dry-run
 ```
 
 ### Use Your Own Toolchain in the Full Image
 
-To use the toolchain image you built, change the base-image line in [`src/dcdocker/assets/kos-ready/Dockerfile`](src/dcdocker/assets/kos-ready/Dockerfile) to your namespace:
-
-```dockerfile
-FROM yourname/${base_image}:${dc_chain_version}
-```
-
-Then run the full-image command with the same profile used for the toolchain build. For example, after building `yourname/dc-chain:16.2.0`:
+Use `--base-image` with the complete reference; no Dockerfile edit is needed:
 
 ```sh
-uv run --locked --no-dev dcdocker build kos-image -u yourname --toolchain-tag 16.2.0
+uv run --locked --no-dev dcdocker build kos-image --namespace yourname \
+  --base-image yourname/dc-chain:16.2.0 \
+  --kos-ref master --kos-ports-ref master --gldc-ref master --non-interactive
+
+uv run --locked --no-dev dcdocker build kos-image --namespace yourname \
+  --base-image registry.example:5000/team/dc-chain-gdb:16.2.0 --gdb \
+  --image-tag my-development-image \
+  --kos-ref master --kos-ports-ref master --gldc-ref master --non-interactive
 ```
 
-If you also built `yourname/dc-chain-gdb:16.2.0`, add `--gdb` to the full-image command to use it.
+Custom bases may use a registry port, tag, or complete SHA-256/SHA-384/SHA-512 digest. An untagged or digest-only reference requires `--image-tag`. A custom reference containing a tag can supply the generated output tag prefix. Do not combine `--base-image` with an explicit `--toolchain-tag` or its legacy aliases; the implicit default is not a conflict.
 
-Both commands default to `16.2.0`. If you choose another profile, pass it as `--profile` to `build dc-chain` and `--toolchain-tag` to `build kos-image`. The full-image Dockerfile uses Alpine's `apk` package manager and expects the KOS toolchain layout; a custom base image must remain compatible with those requirements.
+`--base-image` is authoritative. Adding `--gdb` affects generated output naming but does not rewrite the custom base or verify its contents. The full-image recipe still requires an Alpine-compatible base and the KOS toolchain layout.
 
 The alternative [`kos-alpine/Dockerfile`](kos-alpine/Dockerfile) also defaults to `dc_chain_version=16.2.0`; override it with `--build-arg dc_chain_version=<tag>` when building that Dockerfile directly.
 
 ### Generated Image Tags
 
-The full-image command generates tags using these rules:
+The full-image command keeps the existing names for `master`, uppercase `DDMONYY` snapshots, and GLdc `release/DDMONYY` branches. It starts with the selected base tag, adds `gdb-` when requested, and uses `latest` for KOS `master`. Non-master ports and GLdc refs add `-kp` and `-gl` components.
 
-- Start with `<profile>-<kos-snapshot>`, lowercasing the KOS tag. If KOS is `master`, use `<profile>-latest`.
-- With `--gdb`, insert `gdb-` immediately after `<profile>-`; for example, `16.2.0-gdb-latest` when KOS is `master`.
-- Append `-kp<kos-ports-ref>` in lowercase when kos-ports is not `master`. Characters outside `a-z`, `0-9`, `_`, `.`, and `-` are replaced with `-` in the image tag (for example, `feature/my-branch` becomes `kpfeature-my-branch`); the Git branch or tag itself is passed unchanged.
-- Append `-gl<gldc-snapshot>` when GLdc is not `master`, using the last seven characters of the branch name in lowercase (for example, `release/01MAR25` becomes `gl01mar25`).
+For other branch/tag combinations, refs are lowercased and unsupported tag characters such as `/` become `-`. A final `-r<12-hex>` SHA-256 discriminator derived from the three original refs distinguishes case changes and normalization collisions. This deliberately changes generated names for arbitrary branches; date snapshots and all-master names stay unchanged. The discriminator identifies requested names, not resolved commits.
 
-Examples below illustrate the naming rules; available snapshots depend on the configured repositories:
-
-| Profile | KOS | kos-ports | GLdc | Generated tag |
+| Base tag | KOS | kos-ports | GLdc | Generated output tag |
 | --- | --- | --- | --- | --- |
 | `16.2.0` | `master` | `master` | `master` | `16.2.0-latest` |
 | `16.2.0` | `01MAR25` | `01MAR25` | `release/01MAR25` | `16.2.0-01mar25-kp01mar25-gl01mar25` |
-| `16.2.0` | `01MAR25` | `master` | `master` | `16.2.0-01mar25` |
-| `16.2.0` | `master` | `feature/my-branch` | `master` | `16.2.0-latest-kpfeature-my-branch` |
+| `16.2.0` | `master` | `feature/my-branch` | `master` | `16.2.0-latest-kpfeature-my-branch-rc8a522861d62` |
+
+`--image-tag` replaces the entire generated tag. Tags use 1–128 ASCII letters, digits, underscores, dots or hyphens and must begin with a letter, digit or underscore. Oversized generated tags fail with guidance to set `--image-tag`; refs are never truncated for checkout. See [Docker image reference documentation](https://docs.docker.com/reference/cli/docker/image/tag/) for registry and repository naming.
 
 ### Run the Container
 
@@ -227,7 +262,8 @@ Both Dockerfiles include `uv` and `uvx`. The ready-to-use image installs `cpplin
 | The local KallistiOS path is invalid or its Dockerfile cannot be read | Check the directory passed to `--kos-path` and ensure it contains `utils/kos-chain/docker/Dockerfile`. Omit the option to clone fresh sources. |
 | Docker cannot find the toolchain Dockerfile or profile | Check that your KallistiOS checkout contains the expected `utils/kos-chain/` files. |
 | Packaged build assets cannot be prepared | Reinstall the package and check temporary-directory access. For direct Docker builds, use `src/dcdocker/assets/kos-ready/` from the checkout root. |
-| The base image cannot be found or pulled | Check the profile tag and the `FROM` namespace in `src/dcdocker/assets/kos-ready/Dockerfile`, especially when using your own toolchain. |
+| The base image cannot be found or pulled | Check `--toolchain-tag` or the complete `--base-image` reference and registry access. |
+| `Explicit source refs required` | Supply all three refs for non-terminal builds and dry-run. Use `--non-interactive` or `--yes` to authorize execution without confirmation. |
 | `apk` reports `DNS: transient error` followed by `openssl-dev (no such package)` | The Alpine package indexes could not be fetched. Package operations retry up to five times, waiting 5, 10, 15, and 20 seconds between attempts. If failures persist, check DNS and repository access from Docker containers, correct Docker's DNS/network configuration, and rerun the build. |
 | The full-image command reports `Docker build failed` | Check Docker's output above the message for the failing step. The script exits with an error without a Python traceback. |
 | Snapshot retrieval fails or a snapshot menu is empty | Check access to GitHub/GitLab and whether the selected year has tags. Empty menus exit automatically; rerun with a different year or `master`. |
@@ -236,7 +272,7 @@ For toolchain builds, check Docker's output and confirm the resulting image with
 
 ### Migrating from the Python scripts
 
-Both script filenames remain available as compatibility entry points and print one migration notice to stderr when executed. Their original options and interactive behavior are preserved through the same command implementation. They will remain for at least one release with the new CLI; a removal release has not yet been selected.
+Both script filenames remain available as compatibility entry points and print one migration notice to stderr when executed. Their original option spellings remain accepted through the same implementation. Interactive menus require a terminal; piped/CI invocations must now provide explicit refs and confirmation controls. They will remain for at least one release with the new CLI; a removal release has not yet been selected.
 
 | Previous invocation or option | Preferred equivalent |
 | --- | --- |
@@ -247,8 +283,9 @@ Both script filenames remain available as compatibility entry points and print o
 | Full-image `--profile` / `-p` | `--toolchain-tag` |
 | `--kos-ports-branch` | `--kos-ports-ref` |
 | Direct Docker context `./kos-ready/` | `./src/dcdocker/assets/kos-ready/` |
+| Docker arguments `base_image=dc-chain`, `dc_chain_version=16.2.0` | `base_image=maishuji/dc-chain:16.2.0` |
 
-Old option spellings also work with the installed commands. The full-image base remains under the `maishuji` namespace; the output namespace does not change it. To customize the recipe, edit the canonical asset in a source checkout and use the editable installation or rebuild the tool installation. The old top-level `kos-ready/` directory has been removed.
+Old option spellings also work with the installed commands. The default base remains under `maishuji`; use `--base-image` to override it. The output namespace does not change the base. To customize the recipe, edit the canonical asset in a source checkout and use the editable installation or rebuild the tool installation. The old top-level `kos-ready/` directory has been removed.
 
 ---
 
