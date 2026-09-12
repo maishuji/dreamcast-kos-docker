@@ -50,7 +50,7 @@ RUN python3 /usr/local/lib/dcdocker/source_build.py checkout \
 
 # Configuring environ.sh
 RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
-    source /opt/toolchains/dc/kos/environ.sh && pwd && \
+    source /opt/toolchains/dc/kos/environ.sh && \
     make
 
 # Fetch once, including full commit IDs, then preserve submodule revisions.
@@ -85,13 +85,13 @@ RUN source /opt/toolchains/dc/kos/environ.sh && \
     /opt/toolchains/dc/kos-ports/utils/build-all.sh && \
     python3 /usr/local/lib/dcdocker/source_build.py record
 
-# Remove broken examle kgl
+# Remove broken example kgl
 #RUN sed -e s/kgl//g -i /opt/toolchains/dc/kos/examples/dreamcast/Makefile && cat /opt/toolchains/dc/kos/examples/dreamcast/Makefile
 
 # mkdcdisc
 RUN source /opt/toolchains/dc/kos/environ.sh && \
     git clone https://gitlab.com/simulant/mkdcdisc.git /opt/toolchains/dc/mkdcdisc && \
-    cd /opt/toolchains/dc/ && ls && \
+    cd /opt/toolchains/dc/ && \
     cd mkdcdisc && \
     meson setup builddir && \
     meson compile -C builddir && \
