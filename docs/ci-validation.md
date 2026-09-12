@@ -10,7 +10,11 @@ Full Docker validation is separated into the manual
 [`Docker Smoke Checks workflow`](../.github/workflows/docker-smoke.yml). It
 validates one normal or GDB variant at a time and uses the published
 toolchain base by default. Rebuilding the toolchain from upstream sources is
-an explicit workflow input for release or investigation work.
+an explicit workflow input for release or investigation work. The workflow
+also accepts an explicit `kos-ports` branch, tag, or commit; for example,
+`fix/make-build-all-succeed` can be selected while that upstream fix is under
+review. That branch is the temporary default while the PR is under review and
+must be changed back to `master` after it is merged.
 
 ## Rationale
 

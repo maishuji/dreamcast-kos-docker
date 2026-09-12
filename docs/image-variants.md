@@ -18,7 +18,7 @@ path.
 | Intended use | Supported KOS development image | Legacy direct-build image |
 | Base selection | Complete `base_image` reference, including custom registries and digests | `dc_chain_version` tag under the fixed `maishuji` namespace |
 | KOS | Requested branch, tag, or full commit, fetched once | Fixed `01FEB25` branch |
-| kos-ports | Requested branch, tag, or full commit, with recursive submodules | Repository default branch |
+| kos-ports | Requested branch, tag, or full commit, with recursive submodules; direct Docker builds temporarily default to `fix/make-build-all-succeed` while its upstream PR is under review | Repository default branch |
 | GLdc | Requested branch, tag, or full commit, verified after installation | Makefile rewritten to a fixed `release/07DEC24` branch |
 | Ports build | Builds `libGL`, then the configured `build-all.sh` set; removes known broken ports | Builds `libGL` and `libdcplib`; leaves the broad build commented out |
 | Additional tools | `mkdcdisc`, SOIL, `dcload-ip`, graphics dependencies, `cpplint`, and source metadata | `mkdcdisc` and the older prerequisite set |
