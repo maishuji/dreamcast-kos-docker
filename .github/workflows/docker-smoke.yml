@@ -16,6 +16,11 @@ on:
         required: true
         type: boolean
         default: false
+      kos_ports_ref:
+        description: kos-ports branch, tag, or commit to validate
+        required: true
+        type: string
+        default: fix/make-build-all-succeed
 
 permissions:
   contents: read
@@ -35,6 +40,7 @@ jobs:
     env:
       VARIANT: ${{ inputs.variant }}
       BUILD_TOOLCHAIN: ${{ inputs.build_toolchain }}
+      KOS_PORTS_REF: ${{ inputs.kos_ports_ref }}
       INCLUDE_GDB: ${{ inputs.variant == 'gdb' && '1' || '0' }}
 
     steps:
@@ -98,7 +104,7 @@ jobs:
           docker build --progress=plain \
             --build-arg "base_image=$BASE_IMAGE" \
             --build-arg snapshot_kos=master \
-            --build-arg snapshot_kosports=master \
+            --build-arg "snapshot_kosports=$KOS_PORTS_REF" \
             --build-arg snapshot_gldc=master \
             --tag "dcdocker/kos-ready:$VARIANT" \
             src/dcdocker/assets/kos-ready 2>&1 | tee "ci-artifacts/$VARIANT/ready-build.log"

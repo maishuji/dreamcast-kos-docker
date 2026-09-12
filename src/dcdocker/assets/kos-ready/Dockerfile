@@ -4,7 +4,8 @@
 # Build Arguments
 ARG base_image=maishuji/dc-chain:16.2.0
 ARG snapshot_kos=master
-ARG snapshot_kosports=master
+# Temporary default while the kos-ports master branch is not stable (build_all.sh broken)
+ARG snapshot_kosports=fix/make-build-all-succeed
 ARG snapshot_gldc=master
 
 # Complete toolchain image reference: normal/GDB variant, custom registry, tag or digest.
