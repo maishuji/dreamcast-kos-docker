@@ -123,18 +123,18 @@ Explicit refs bypass their discovery requests. Execution may still need network 
 
 Enter the **number** beside each choice when prompted:
 
-1. **KOS:** choose `2026`, `2025`, or `master`. Choosing a year fetches matching snapshot tags and prompts you to select one. Choosing `master` skips the snapshot selection.
-2. **kos-ports:** choose a year and snapshot, or `master`, in the same way. This step is skipped when `--kos-ports-branch` is supplied.
+1. **KOS:** the command fetches available tags, then offers their snapshot years (newest first) and `master (branch)`. Choose a year and snapshot tag, or explicitly select the moving `master` branch.
+2. **kos-ports:** choose a discovered year and snapshot tag, or `master (branch)`, in the same way. This step is skipped when `--kos-ports-branch` is supplied.
 3. **GLdc:** choose one of the fetched `release/` branches or `master`.
 4. **Confirmation:** review the selected versions and the printed Docker command. Enter `1` for **Yes** to build or `2` for **No** to cancel. Cancellation exits with status 1.
 
-The snapshot menus use the forks configured in [`src/dcdocker/defaults.py`](src/dcdocker/defaults.py): `maishuji/KallistiOS`, `maishuji/kos-ports`, and `quentin.cartier.dev/GLdc`. The KOS and kos-ports year menus currently list only 2026 and 2025. `master` selects the repository's moving branch, so later builds can use different source revisions.
+The snapshot menus use the forks configured in [`src/dcdocker/defaults.py`](src/dcdocker/defaults.py): `maishuji/KallistiOS`, `maishuji/kos-ports`, and `quentin.cartier.dev/GLdc`. Years come from uppercase `DDMONYY` tags, interpreting `YY` as 2000–2099; unrelated tag names do not create year choices. An empty tag catalog offers only the explicit `master (branch)` choice. GLdc lists only discovered `release/` and `master` branches. `master` selects the repository's moving branch, so later builds can use different source revisions.
 
 On a terminal, only omitted refs are prompted for. Without a terminal, all three refs are required, plus `--non-interactive` or `--yes` to execute. `--yes` skips confirmation but does not choose missing refs. Dry-run always requires explicit refs and performs no source discovery or external execution, even on a terminal.
 
 The printed Docker command uses an owned context that is removed after execution. Dry-run displays `<packaged-context>` or `<fresh-kos>` placeholders instead of creating directories. It reports unresolved commits and unverified base/source availability; it cannot prove that a build will succeed. Repeat builds through the CLI or use the direct-Docker recipe path below.
 
-If discovery fails, the script reports the affected source and the connection, timeout, HTTP, or response-format problem and exits with status 1. A successful lookup with no matching choices also exits clearly; rerun with another selection or check the source repository. EOF or Ctrl-C aborts without starting a build when entered at a prompt. Missing build-context files or Docker produce an actionable error instead of a traceback.
+If discovery fails, the script reports the affected source and the connection, timeout, HTTP, or response-format problem and exits with status 1. A GLdc lookup with no matching branches also exits clearly. Discovery never silently selects `master` after a failure. Each catalog is fetched once per selection, with pages of up to 100 refs and a limit of 20 pages. GitHub Link and GitLab pagination headers are supported; full pages without headers trigger another page request. Duplicate refs are deduplicated, while repeated pages, invalid pagination and exhausted limits fail instead of offering incomplete results. Requests use a 30-second timeout; rate-limit responses (403/429) fail immediately without automatic retries or sleeps. Supply explicit refs to bypass discovery. EOF or Ctrl-C aborts without starting a build when entered at a prompt. Missing build-context files or Docker produce an actionable error instead of a traceback.
 
 `--kos-ports-branch` is passed unchanged to the existing Docker build argument `snapshot_kosports`. For a direct build, use `docker build --build-arg snapshot_kosports=feature/my-branch -t yourname/dc-kos-image:custom ./src/dcdocker/assets/kos-ready/`. Omitting that build argument uses `master`.
 
@@ -185,9 +185,9 @@ uv run --locked --no-dev dcdocker build dc-chain -u yourname -p 16.2.0 --kos-pat
 | `--dry-run` | No | Print inputs and planned clone/build commands without executing them. |
 | `--help` | No | Display command-line help and exit. |
 
-Unless `--dry-run` is supplied, this command starts the Docker build immediately, without a confirmation prompt. It passes the selected `profile` and a fixed `makejobs=4` to Docker. Without `--use-gdb`, it passes `include_gdb=0` and produces `<username>/dc-chain:<profile>`.
+Unless `--dry-run` is supplied, this command starts the Docker build immediately, without a confirmation prompt. Before Docker runs, it checks that the selected `profiles/dreamcast/<profile>.mk` is readable and the Dockerfile declares `ARG profile`. Custom local profiles are supported. It passes `makejobs=4` only when the Dockerfile declares that argument; otherwise it reports that upstream concurrency defaults apply. Without `--use-gdb`, it passes `include_gdb=0` only when declared and produces `<username>/dc-chain:<profile>`.
 
-With `--use-gdb`, it passes `include_gdb=1` and builds the toolchain and GDB together in a single image, `<username>/dc-chain-gdb:<profile>`. To also create an image without GDB, run the command separately without the flag. GDB builds require a KallistiOS Dockerfile that declares `ARG include_gdb`; update your checkout if the script reports that this argument is unsupported.
+With `--use-gdb`, it passes `include_gdb=1` and builds the toolchain and GDB together in a single image, `<username>/dc-chain-gdb:<profile>`. To also create an image without GDB, run the command separately without the flag. GDB builds require a KallistiOS Dockerfile that declares `ARG include_gdb`; update your checkout if the command reports that this argument is unsupported. Declaration checks support instruction case, whitespace, quoted defaults and line continuations, and ignore comments and shell heredoc contents. These checks establish the declared interface, not whether the recipe correctly uses each argument. Dry-run does not read the checkout and shows optional arguments as conditional on these checks.
 
 ```sh
 uv run --locked --no-dev dcdocker build dc-chain -u yourname -p 16.2.0 --gdb
@@ -260,13 +260,13 @@ Both Dockerfiles include `uv` and `uvx`. The ready-to-use image installs `cpplin
 | Docker is missing or cannot connect to its daemon | Check that Docker is installed, running, and accessible with `docker info`. |
 | KallistiOS cloning fails | Check that Git is installed and GitHub is reachable, or supply an existing checkout with `--kos-path`. |
 | The local KallistiOS path is invalid or its Dockerfile cannot be read | Check the directory passed to `--kos-path` and ensure it contains `utils/kos-chain/docker/Dockerfile`. Omit the option to clone fresh sources. |
-| Docker cannot find the toolchain Dockerfile or profile | Check that your KallistiOS checkout contains the expected `utils/kos-chain/` files. |
+| The selected profile is missing or `ARG profile` is unsupported | Check `utils/kos-chain/profiles/dreamcast/<profile>.mk` and the Dockerfile in the selected checkout. Use a compatible checkout or choose one of its profiles. |
 | Packaged build assets cannot be prepared | Reinstall the package and check temporary-directory access. For direct Docker builds, use `src/dcdocker/assets/kos-ready/` from the checkout root. |
 | The base image cannot be found or pulled | Check `--toolchain-tag` or the complete `--base-image` reference and registry access. |
 | `Explicit source refs required` | Supply all three refs for non-terminal builds and dry-run. Use `--non-interactive` or `--yes` to authorize execution without confirmation. |
 | `apk` reports `DNS: transient error` followed by `openssl-dev (no such package)` | The Alpine package indexes could not be fetched. Package operations retry up to five times, waiting 5, 10, 15, and 20 seconds between attempts. If failures persist, check DNS and repository access from Docker containers, correct Docker's DNS/network configuration, and rerun the build. |
 | The full-image command reports `Docker build failed` | Check Docker's output above the message for the failing step. The script exits with an error without a Python traceback. |
-| Snapshot retrieval fails or a snapshot menu is empty | Check access to GitHub/GitLab and whether the selected year has tags. Empty menus exit automatically; rerun with a different year or `master`. |
+| Snapshot retrieval fails or reaches its pagination limit | Check GitHub/GitLab access and rate limits, or supply all three source refs explicitly. Discovery errors never select `master` automatically. |
 
 For toolchain builds, check Docker's output and confirm the resulting image with `docker image inspect yourname/dc-chain:16.2.0` (substitute your profile). If the Docker build fails, including while building GDB, the script reports the Docker exit code and exits with a nonzero status.
 

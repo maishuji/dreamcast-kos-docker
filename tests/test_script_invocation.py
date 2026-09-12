@@ -48,7 +48,10 @@ class ScriptInvocationTests(unittest.TestCase):
             local_kos = caller / "local kos"
             dockerfile = local_kos / "utils/kos-chain/docker/Dockerfile"
             dockerfile.parent.mkdir(parents=True)
-            dockerfile.write_text("ARG include_gdb=0\n", encoding="utf-8")
+            dockerfile.write_text("ARG profile=stable\nARG include_gdb=0\n", encoding="utf-8")
+            profile = dockerfile.parents[1] / "profiles/dreamcast/16.2.0.mk"
+            profile.parent.mkdir(parents=True)
+            profile.write_text("# Test profile\n", encoding="utf-8")
             scripts = (
                 ("build_dc_kos_full_image.py", ["--kos-ref", "master", "--kos-ports-ref",
                                                    "master", "--gldc-ref", "master",

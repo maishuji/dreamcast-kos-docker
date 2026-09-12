@@ -35,7 +35,9 @@ class FullImageBuildTests(unittest.TestCase):
         )
         self.http = self.enterContext(patch.object(sources.requests, "get"))
         self.http.return_value = Mock(
-            status_code=200, json=Mock(return_value=[{"name": "master"}])
+            status_code=200, headers={}, links={},
+            json=Mock(return_value=[{"name": "01MAR26"}, {"name": "01MAR25"},
+                                    {"name": "master"}])
         )
 
     def assert_contexts_removed(self):
@@ -73,11 +75,14 @@ class FullImageBuildTests(unittest.TestCase):
 
     def test_snapshot_names_and_arguments(self):
         self.http.side_effect = [
-            Mock(status_code=200, json=Mock(return_value=[{"ref": "refs/tags/01MAR25"}])),
-            Mock(status_code=200, json=Mock(return_value=[{"ref": "refs/tags/02MAR25"}])),
-            Mock(status_code=200, json=Mock(return_value=[{"name": "release/03MAR25"}])),
+            Mock(status_code=200, headers={}, links={},
+                 json=Mock(return_value=[{"name": "01MAR25"}])),
+            Mock(status_code=200, headers={}, links={},
+                 json=Mock(return_value=[{"name": "02MAR25"}])),
+            Mock(status_code=200, headers={}, links={},
+                 json=Mock(return_value=[{"name": "release/03MAR25"}])),
         ]
-        result = self.invoke(["-p", "custom"], "2\n1\n2\n1\n1\n1\n")
+        result = self.invoke(["-p", "custom"], "1\n1\n1\n1\n1\n1\n")
         self.assertEqual(result.exit_code, 0, result.output)
         command = self.docker.call_args.args[0]
         self.assertIn("test/dc-kos-image:custom-01mar25-kp02mar25-gl03mar25", command)
@@ -88,8 +93,9 @@ class FullImageBuildTests(unittest.TestCase):
     def test_explicit_kos_ports_skips_its_menu_and_discovery(self):
         result = self.invoke(["--kos-ports-branch", "feature/My-Branch"], "3\n1\n1\n")
         self.assertEqual(result.exit_code, 0, result.output)
-        self.http.assert_called_once()
-        self.assertIn("gitlab.com", self.http.call_args.args[0])
+        self.assertEqual(self.http.call_count, 2)
+        self.assertNotIn(defaults.KOS_PORTS_TAGS_URL,
+                         [call.args[0] for call in self.http.call_args_list])
         command = self.docker.call_args.args[0]
         self.assertIn("snapshot_kosports=feature/My-Branch", command)
         self.assertIn("test/dc-kos-image:16.2.0-latest-kpfeature-my-branch-rc3f799196d8d", command)
@@ -125,13 +131,14 @@ class FullImageBuildTests(unittest.TestCase):
             (Mock(status_code=429), "rate limit"),
             (Mock(status_code=200, json=Mock(side_effect=ValueError("bad JSON"))), "JSON"),
         ]
-        # Each sequence reaches one of the three discovery providers first.
-        for answers, source in (("1\n", "KallistiOS"),
-                                ("3\n1\n", "kos-ports"), ("3\n3\n", "GLdc")):
+        # Explicit refs bypass earlier providers, isolating each failure.
+        for args, source in (([], "KallistiOS"),
+                             (["--kos-ref", "master"], "kos-ports"),
+                             (["--kos-ref", "master", "--kos-ports-ref", "master"], "GLdc")):
             for response, message in failures:
                 with self.subTest(source=source, message=message):
                     self.http.side_effect = [response]
-                    result = self.invoke(answers=answers)
+                    result = self.invoke(args=args)
                     self.assertEqual(result.exit_code, 1, result.output)
                     self.assertIn(source, result.output)
                     self.assertIn(message, result.output)
@@ -142,29 +149,23 @@ class FullImageBuildTests(unittest.TestCase):
                                      defaults.REQUEST_TIMEOUT)
 
     def test_malformed_discovery_shapes_are_reported(self):
-        for answers in ("1\n", "3\n1\n", "3\n3\n"):
+        for args in ([], ["--kos-ref", "master"],
+                     ["--kos-ref", "master", "--kos-ports-ref", "master"]):
             for payload in (None, {}, "invalid", [None], [{}],
                             [{"ref": 12, "name": 12}], [{"ref": "", "name": ""}]):
-                with self.subTest(answers=answers, payload=payload):
+                with self.subTest(args=args, payload=payload):
                     self.http.return_value.json.return_value = payload
-                    result = self.invoke(answers=answers)
+                    result = self.invoke(args=args)
                     self.assertEqual(result.exit_code, 1, result.output)
                     self.assertIn("Unexpected response", result.output)
                     self.assertNotIn("Traceback", result.output)
                     self.docker.assert_not_called()
 
-    def test_empty_or_nonmatching_choices_fail_without_empty_menu(self):
-        cases = [
-            ("1\n", []),
-            ("1\n", [{"ref": "refs/tags/01MAR24"}]),
-            ("3\n1\n", []),
-            ("3\n3\n", []),
-            ("3\n3\n", [{"name": "feature/unrelated"}]),
-        ]
-        for answers, payload in cases:
-            with self.subTest(answers=answers, payload=payload):
+    def test_empty_or_nonmatching_gldc_choices_fail_without_empty_menu(self):
+        for payload in ([], [{"name": "feature/unrelated"}]):
+            with self.subTest(payload=payload):
                 self.http.return_value.json.return_value = payload
-                result = self.invoke(answers=answers)
+                result = self.invoke(["--kos-ref", "master", "--kos-ports-ref", "master"])
                 self.assertEqual(result.exit_code, 1, result.output)
                 self.assertIn("No matching", result.output)
                 self.assertNotIn("1-0", result.output)

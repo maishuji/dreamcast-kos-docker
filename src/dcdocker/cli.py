@@ -37,47 +37,27 @@ def prompt_choice(prompt, choices):
             print("Invalid input. Please enter a number.")
 
 
-def choose_snapshot_kos():
-    """Choose a snapshot for targeting kos repository
-    This function prompts the user to select a snapshot for the kos repository.
+def choose_snapshot(source, tags):
+    """Choose a discovered tag year or explicitly select the moving master branch."""
+    branch = "master (branch)"
+    year = prompt_choice(
+        f"\nChoose a snapshot tag year for {source}, or the master branch:",
+        [*sources.snapshot_years(tags), branch],
+    )
+    if year == branch:
+        return "master"
+    return prompt_choice(f"\nChoose a {source} snapshot tag:",
+                         sources.filter_tags_by_year(tags, year))
 
-    Returns:
-        str: The selected snapshot_kos tag.
-    """
-    years = defaults.SNAPSHOT_YEARS
-    kos_year = prompt_choice(
-        "\nPlease choose the year for the snapshot for Kos (or choose master for lastest):",
-        years,
-    )
-    if kos_year == "master":
-        return kos_year
-    # Fetch the avail release tags for the selected year
-    snapshot_kos_choices = sources.fetch_snapshot_kos_tags(kos_year)
-    # Prompt user to select snapshot_kos
-    snapshot_kos = prompt_choice(
-        "\nPlease choose a snapshot_kos:", snapshot_kos_choices
-    )
-    return snapshot_kos
+
+def choose_snapshot_kos():
+    """Fetch the tag catalog once, then select a KallistiOS snapshot."""
+    return choose_snapshot("KOS", sources.fetch_snapshot_kos_tags())
 
 
 def choose_snapshot_kosports():
-    """Choose a snapshop for targeting kos-ports repository
-
-    Returns:
-        str: The selected snapshot_kosports tag.
-    """
-    years = defaults.SNAPSHOT_YEARS
-    kosports_year = prompt_choice(
-        "\nPlease choose the year for the snapshot for kos-ports (or choose master for lastest):",
-        years,
-    )
-    if kosports_year == "master":
-        return kosports_year
-    snapshot_kosports_choices = sources.fetch_snapshot_kosports_tags(kosports_year)
-    snapshot_kosports = prompt_choice(
-        "\nChoose a kos-ports snapshot :", snapshot_kosports_choices
-    )
-    return snapshot_kosports
+    """Fetch the tag catalog once, then select a kos-ports snapshot."""
+    return choose_snapshot("kos-ports", sources.fetch_snapshot_kosports_tags())
 
 
 def choose_snapshot_gldc():
@@ -140,6 +120,8 @@ def toolchain_command(**options):
         else:
             print(f"Source: {source} (used as-is; revision not resolved)")
         print("Preview only; source capabilities and image availability have not been verified.")
+        print("Optional makejobs/include_gdb arguments depend on checkout declarations "
+              "at build time.")
         print(docker.display_command(plan.command))
     else:
         builds.build_toolchain(spec, options["kos_path"])

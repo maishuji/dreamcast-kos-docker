@@ -28,10 +28,13 @@ class ToolchainBuildTests(unittest.TestCase):
         self.write_checkout(self.local_path)
 
     @staticmethod
-    def write_checkout(path, dockerfile="ARG include_gdb=0\n"):
+    def write_checkout(path, dockerfile="ARG profile=stable\nARG makejobs=4\nARG include_gdb=0\n"):
         dockerfile_path = path / "utils/kos-chain/docker/Dockerfile"
         dockerfile_path.parent.mkdir(parents=True, exist_ok=True)
         dockerfile_path.write_text(dockerfile, encoding="utf-8")
+        profile = path / defaults.TOOLCHAIN_PROFILES / "16.2.0.mk"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text("# Test profile\n", encoding="utf-8")
 
     def run_build(self, use_gdb=False, kos_path=None, docker_code=0, clone_code=0):
         """Create fresh sources when Git is invoked and simulate process failures."""
