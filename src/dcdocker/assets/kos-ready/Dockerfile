@@ -120,7 +120,7 @@ RUN wget https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4
     make -j$(nproc) && \
     make install && \
     cd .. && \
-    rm -rf cmake-3.31.4 cmake-3.31.4.tar.gz \
+    rm -rf cmake-3.31.4 cmake-3.31.4.tar.gz && \
     hash -r
 
 

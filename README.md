@@ -239,7 +239,7 @@ Custom bases may use a registry port, tag, or complete SHA-256/SHA-384/SHA-512 d
 
 `--base-image` is authoritative. Adding `--gdb` affects generated output naming but does not rewrite the custom base or verify its contents. The full-image recipe still requires an Alpine-compatible base and the KOS toolchain layout.
 
-The alternative [`kos-alpine/Dockerfile`](kos-alpine/Dockerfile) also defaults to `dc_chain_version=16.2.0`; override it with `--build-arg dc_chain_version=<tag>` when building that Dockerfile directly.
+The alternative [`kos-alpine/Dockerfile`](kos-alpine/Dockerfile) is retained as a legacy direct-Docker recipe, not as a second `dcdocker build kos-image` variant. It has different fixed snapshots, ports, and tools and does not embed source provenance. See the [image variant decision](docs/image-variants.md). It defaults to `dc_chain_version=16.2.0`; override it with `--build-arg dc_chain_version=<tag>` when building that Dockerfile directly.
 
 ### Generated Image Tags
 
