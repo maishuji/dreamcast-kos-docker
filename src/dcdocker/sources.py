@@ -3,6 +3,9 @@
 from contextlib import contextmanager
 from importlib import resources
 from pathlib import Path
+import re
+import shlex
+from urllib.parse import parse_qs, urlsplit
 import subprocess
 from tempfile import TemporaryDirectory
 
@@ -12,10 +15,11 @@ import requests
 from dcdocker import defaults
 
 
-def fetch_ref_names(url, source, key, prefix=""):
-    """Read a provider's ref list, distinguishing service errors from empty results."""
+def fetch_ref_page(url, source, page):
+    """Fetch one bounded page; service errors never become empty discoveries."""
     try:
-        response = requests.get(url, timeout=defaults.REQUEST_TIMEOUT)
+        response = requests.get(url, params={"per_page": defaults.REF_PAGE_SIZE, "page": page},
+                                timeout=defaults.REQUEST_TIMEOUT)
     except requests.Timeout as error:
         raise click.ClickException(
             f"Fetching {source} refs timed out. Try again later ({url})."
@@ -40,79 +44,98 @@ def fetch_ref_names(url, source, key, prefix=""):
         raise click.ClickException(
             f"Invalid JSON while fetching {source} refs. Try again later ({url})."
         ) from error
-    if not isinstance(refs, list) or any(
-        not isinstance(ref, dict)
-        or not isinstance(ref.get(key), str)
-        or not ref[key].startswith(prefix)
-        or not ref[key][len(prefix):]
-        for ref in refs
-    ):
-        raise click.ClickException(
-            f"Unexpected response while fetching {source} refs. "
-            f"Expected a list of named refs ({url})."
-        )
-    return [ref[key][len(prefix):] for ref in refs]
+    return response, refs
 
 
-# Function to filter tags that end with '24'
+def next_ref_page(response, url, page, count):
+    """Honor provider pagination without following URLs outside the requested endpoint."""
+    next_link = response.links.get("next", {}).get("url")
+    if next_link:
+        try:
+            original, target = urlsplit(url), urlsplit(next_link)
+        except ValueError as error:
+            raise click.ClickException(f"Invalid pagination URL while fetching refs ({url}).") \
+                from error
+        if (target.scheme, target.netloc, target.path) != (
+                original.scheme, original.netloc, original.path):
+            raise click.ClickException(
+                f"Unexpected pagination endpoint while fetching refs ({url})."
+            )
+        candidates = parse_qs(target.query).get("page", [])
+        value = candidates[0] if len(candidates) == 1 else "invalid"
+    elif "X-Next-Page" in response.headers:
+        value = response.headers["X-Next-Page"]
+    elif "Link" in response.headers or count < defaults.REF_PAGE_SIZE:
+        return None
+    else:
+        return page + 1
+    if value == "":
+        return None
+    if value != str(page + 1):
+        raise click.ClickException(f"Invalid or repeated pagination while fetching refs ({url}).")
+    return page + 1
+
+
+def fetch_ref_names(url, source, key="name", prefix=""):
+    """Collect complete, deduplicated refs or fail instead of returning partial results."""
+    names = {}
+    page = 1
+    for _ in range(defaults.MAX_REF_PAGES):
+        response, refs = fetch_ref_page(url, source, page)
+        if not isinstance(refs, list) or any(
+            not isinstance(ref, dict)
+            or not isinstance(ref.get(key), str)
+            or not ref[key].startswith(prefix)
+            or not ref[key][len(prefix):]
+            for ref in refs
+        ):
+            raise click.ClickException(
+                f"Unexpected response while fetching {source} refs. "
+                f"Expected a list of named refs ({url})."
+            )
+        current = [ref[key][len(prefix):] for ref in refs]
+        if current and all(name in names for name in current):
+            raise click.ClickException(f"Repeated page while fetching {source} refs ({url}).")
+        names.update(dict.fromkeys(current))
+        following = next_ref_page(response, url, page, len(refs))
+        if following is None:
+            return list(names)
+        if not current:
+            raise click.ClickException(f"Empty page with more pages for {source} refs ({url}).")
+        page = following
+    raise click.ClickException(
+        f"Pagination limit ({defaults.MAX_REF_PAGES} pages) reached for {source} refs. "
+        "Use explicit source refs or try again later."
+    )
+
+
+SNAPSHOT_TAG = re.compile(r"[0-9]{2}(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)([0-9]{2})")
+
+
+def snapshot_years(tags):
+    """Discover snapshot years (20YY) without confusing arbitrary tag suffixes for dates."""
+    return sorted({"20" + match[1] for tag in tags
+                   if (match := SNAPSHOT_TAG.fullmatch(tag))}, reverse=True)
+
+
 def filter_tags_by_year(tags, year):
-    """Filter tags based on the last two digits of the year.
-    This function filters a list of tags to include only those that end with
-    the last two digits of the specified year.
-
-    Args:
-        tags (<str>[]) The array of tags to filter.
-        year (str): the year to filter the tags by.
-    Returns:
-        str[]: The tags that end with the last two digits of the specified year.
-    """
-    year_pattern = year[
-        -2:
-    ]  # Extract the last two digits of the year (e.g., '24' from '13JAN24')
-    filtered_tags = [tag for tag in tags if tag.endswith(year_pattern)]
-    print(filtered_tags)
-    return filtered_tags
+    """Select only DD MON YY snapshot tags from the discovered year."""
+    return [tag for tag in tags if SNAPSHOT_TAG.fullmatch(tag) and "20" + tag[-2:] == year]
 
 
-# Function to fetch tags from the GitHub repository for KallistiOS, and include master
-def fetch_snapshot_kos_tags(year):
-    """Fetch tags from the KallistiOS GitHub repository.
-
-    Args:
-        year (str): The year to filter the tags by.
-
-    Returns:
-        <str>[]: List of tags that end with the last two digits of the specified year.
-    """
-    url = defaults.KOS_TAGS_URL
-    tags = fetch_ref_names(url, "KallistiOS", "ref", "refs/tags/")
-    return filter_tags_by_year(tags, year)
+def fetch_snapshot_kos_tags():
+    """Discover KallistiOS tags using GitHub's paginated repository tags endpoint."""
+    return fetch_ref_names(defaults.KOS_TAGS_URL, "KallistiOS")
 
 
-# Function to fetch tags from the GitHub repository for KallistiOS, and include master
-def fetch_snapshot_kosports_tags(year):
-    """Fetch tags from the kos-ports GitHub repository.
-
-    Args:
-        year (str): The year to filter the tags by.
-
-    Returns:
-        <str>[]: The list of tags that end with the last two digits of the specified year.
-    """
-    url = defaults.KOS_PORTS_TAGS_URL
-    tags = fetch_ref_names(url, "kos-ports", "ref", "refs/tags/")
-    return filter_tags_by_year(tags, year)
+def fetch_snapshot_kosports_tags():
+    """Discover kos-ports tags separately from branches."""
+    return fetch_ref_names(defaults.KOS_PORTS_TAGS_URL, "kos-ports")
 
 
-# Function to fetch branches from the GitLab repository
 def fetch_release_branches_gldc():
-    """Fetch release branches from the GLdc GitLab repository.
-
-    Returns:
-        <str>[]: List of release branches or master branch.
-    """
-    url = defaults.GLDC_BRANCHES_URL
-    branches = fetch_ref_names(url, "GLdc", "name")
+    """Discover GitLab release branches; never invent a missing master branch."""
+    branches = fetch_ref_names(defaults.GLDC_BRANCHES_URL, "GLdc")
     return [branch for branch in branches
             if branch.startswith("release/") or branch == "master"]
 
@@ -147,24 +170,77 @@ def toolchain_checkout(kos_path=None):
         yield source_path
 
 
-def validate_toolchain(source_path, use_gdb):
-    """Check the selected Dockerfile's existing GDB compatibility contract."""
+def dockerfile_arguments(dockerfile):
+    """Read ARG declarations, including case, whitespace and line continuations.
+
+    This checks declared interface names, not whether a recipe uses them correctly.
+    Ignore shell heredocs so their contents cannot impersonate Docker instructions.
+    """
+    arguments = set()
+    pending = ""
+    heredocs = []
+    escape = "\\"
+    for line in dockerfile.splitlines():
+        if heredocs:
+            if line.strip() == heredocs[0]:
+                heredocs.pop(0)
+            continue
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            directive = re.fullmatch(r"#\s*escape\s*=\s*([`\\])", stripped, re.IGNORECASE)
+            if directive:
+                escape = directive[1]
+            continue
+        if stripped.endswith(escape):
+            pending += stripped[:-1] + " "
+            continue
+        instruction = pending + stripped
+        pending = ""
+        parts = instruction.split(None, 1)
+        if len(parts) != 2:
+            continue
+        if parts[0].upper() == "ARG":
+            try:
+                declarations = shlex.split(parts[1])
+            except ValueError as error:
+                raise click.ClickException(
+                    "Cannot parse ARG declaration in KallistiOS Dockerfile."
+                ) from error
+            arguments.update(value.split("=", 1)[0] for value in declarations)
+        elif parts[0].upper() in ("RUN", "COPY"):
+            heredocs = re.findall(r"<<-?['\"]?([A-Za-z_][A-Za-z0-9_]*)", parts[1])
+    return frozenset(arguments)
+
+
+def validate_toolchain(source_path, use_gdb, profile=defaults.DEFAULT_DC_CHAIN_PROFILE):
+    """Validate selected profile and declared interface before starting Docker."""
     dockerfile_path = source_path / defaults.TOOLCHAIN_DOCKERFILE
     try:
         dockerfile = dockerfile_path.read_text(encoding="utf-8")
-    except OSError as file_error:
+    except (OSError, UnicodeError) as file_error:
         raise click.ClickException(
             f"Cannot read KallistiOS Dockerfile at {dockerfile_path}: {file_error}"
         ) from file_error
-
-    if use_gdb and not any(
-        line.strip().split("=", 1)[0] == "ARG include_gdb"
-        for line in dockerfile.splitlines()
-    ):
+    arguments = dockerfile_arguments(dockerfile)
+    if "profile" not in arguments:
+        raise click.ClickException(
+            f"The KallistiOS Dockerfile at {dockerfile_path} does not declare ARG profile. "
+            "Use a checkout with the supported kos-chain build interface."
+        )
+    if use_gdb and "include_gdb" not in arguments:
         raise click.ClickException(
             "The KallistiOS Dockerfile does not support include_gdb. "
             f"Update your checkout at {source_path} before using --use-gdb."
         )
+    profile_path = source_path / defaults.TOOLCHAIN_PROFILES / f"{profile}.mk"
+    try:
+        profile_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as file_error:
+        raise click.ClickException(
+            f"Cannot read selected toolchain profile {profile!r} at {profile_path}. "
+            "Choose --profile from this checkout's profiles/dreamcast directory."
+        ) from file_error
+    return arguments
 
 
 def validate_ready_context(build_context):

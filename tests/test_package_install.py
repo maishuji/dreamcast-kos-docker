@@ -21,7 +21,10 @@ if Path(sys.argv[0]).name == 'git':
     source = Path(sys.argv[-1])
     dockerfile = source / 'utils/kos-chain/docker/Dockerfile'
     dockerfile.parent.mkdir(parents=True)
-    dockerfile.write_text('ARG include_gdb=0\\n')
+    dockerfile.write_text('ARG profile=stable\\nARG include_gdb=0\\n')
+    profile = dockerfile.parents[1] / 'profiles/dreamcast/16.2.0.mk'
+    profile.parent.mkdir(parents=True)
+    profile.write_text('# Test profile\\n')
 else:
     args = sys.argv[1:]
     assert args[0] == 'build'
@@ -179,7 +182,10 @@ class PackageInstallTests(unittest.TestCase):
         local = workspace / "local kos"
         dockerfile = local / "utils/kos-chain/docker/Dockerfile"
         dockerfile.parent.mkdir(parents=True)
-        dockerfile.write_text("ARG include_gdb=0\n", encoding="utf-8")
+        dockerfile.write_text("ARG profile=stable\nARG include_gdb=0\n", encoding="utf-8")
+        profile = dockerfile.parents[1] / "profiles/dreamcast/16.2.0.mk"
+        profile.parent.mkdir(parents=True)
+        profile.write_text("# Test profile\n", encoding="utf-8")
         for selection in ([], ["--kos-path", str(local)]):
             self.run_command([str(executable), "build", "dc-chain", "-u", "test", "--gdb",
                               *selection], cwd=workspace, env=env)

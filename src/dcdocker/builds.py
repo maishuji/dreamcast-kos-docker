@@ -45,16 +45,18 @@ class BuildPlan:
     command: tuple[str, ...]
 
 
-def plan_toolchain(spec, source_path):
+def plan_toolchain(spec, source_path, *, supported_args=None):
     """Calculate a toolchain command without checking out or inspecting sources."""
     validation.namespace(spec.namespace)
     validation.profile(spec.profile)
     tag = validation.image_tag(spec.profile if spec.image_tag is None else spec.image_tag)
     repository = "dc-chain-gdb" if spec.gdb else "dc-chain"
     image = f"{spec.namespace}/{repository}:{tag}"
+    arguments = (("profile", spec.profile), ("makejobs", 4), ("include_gdb", int(spec.gdb)))
+    if supported_args is not None:
+        arguments = tuple(item for item in arguments if item[0] in supported_args)
     command = docker.build_command(
-        image, source_path,
-        (("profile", spec.profile), ("makejobs", 4), ("include_gdb", int(spec.gdb))),
+        image, source_path, arguments,
         Path(source_path) / defaults.TOOLCHAIN_DOCKERFILE,
     )
     return BuildPlan(image, command)
@@ -119,8 +121,10 @@ def plan_full_image(spec, build_context):
 def build_toolchain(spec, kos_path=None):
     """Keep owned sources alive throughout Docker execution and clean up on exit."""
     with sources.toolchain_checkout(kos_path) as source_path:
-        sources.validate_toolchain(source_path, spec.gdb)
-        plan = plan_toolchain(spec, source_path)
+        arguments = sources.validate_toolchain(source_path, spec.gdb, spec.profile)
+        plan = plan_toolchain(spec, source_path, supported_args=arguments)
+        if "makejobs" not in arguments:
+            print("Dockerfile does not declare makejobs; using upstream concurrency defaults.")
         print("Building Docker image... This may take a while. dc_chain_profile: ", spec.profile)
         print(f"Running command: {docker.display_command(plan.command)}")
         docker.execute_build(plan.command, "Toolchain Docker build")
