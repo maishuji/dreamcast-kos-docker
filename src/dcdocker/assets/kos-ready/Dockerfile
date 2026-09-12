@@ -147,7 +147,7 @@ ARG GID=23456
 
 RUN addgroup --gid "$GID" "$GROUPNAME" && \
     adduser --disabled-password --gecos "" --ingroup "$GROUPNAME" --uid "$UID" --home /home/$USER $USER && \
-    chown -R $USER:$GROUPNAME /home/$USER
+    chown -R $USER:$GROUPNAME /home/$USER /opt/toolchains/dc
 
 # Clean up
 RUN rm -rf /var/cache/apk/*
