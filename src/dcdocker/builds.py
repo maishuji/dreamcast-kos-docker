@@ -8,7 +8,7 @@ import json
 
 import click
 
-from dcdocker import defaults, docker, sources, validation
+from dcdocker import defaults, docker, provenance, sources, validation
 
 
 @dataclass(frozen=True)
@@ -118,14 +118,80 @@ def plan_full_image(spec, build_context):
     return BuildPlan(image, command)
 
 
-def build_toolchain(spec, kos_path=None):
+def build_toolchain(spec, kos_path=None, *, kos_ref=None, metadata_file=None):
     """Keep owned sources alive throughout Docker execution and clean up on exit."""
-    with sources.toolchain_checkout(kos_path) as source_path:
-        arguments = sources.validate_toolchain(source_path, spec.gdb, spec.profile)
-        plan = plan_toolchain(spec, source_path, supported_args=arguments)
-        if "makejobs" not in arguments:
-            print("Dockerfile does not declare makejobs; using upstream concurrency defaults.")
-        print("Building Docker image... This may take a while. dc_chain_profile: ", spec.profile)
-        print(f"Running command: {docker.display_command(plan.command)}")
-        docker.execute_build(plan.command, "Toolchain Docker build")
-        print(f"Successfully built Docker image: {plan.image}")
+    report = provenance.new_report("dc-chain", spec, plan_toolchain(spec, "<fresh-kos>"))
+    report["sources"]["kos"] = {
+        "repository": defaults.KOS_REPOSITORY if kos_path is None else None,
+        "requested_ref": kos_ref, "path": str(kos_path) if kos_path is not None else None,
+        "commit": None, "dirty": None, "state": "unknown",
+        "selection": "local" if kos_path is not None else "remote",
+    }
+    with provenance.reporting(metadata_file, report):
+        with sources.toolchain_checkout(kos_path, kos_ref) as source_path:
+            arguments = sources.validate_toolchain(source_path, spec.gdb, spec.profile)
+            plan = plan_toolchain(spec, source_path, supported_args=arguments)
+            source = provenance.inspect_source(source_path, kos_ref)
+            source["selection"] = "local" if kos_path is not None else "remote"
+            if kos_path is None:
+                source["repository"] = defaults.KOS_REPOSITORY
+            report["sources"]["kos"] = source
+            report["dockerfile"] = provenance.file_identity(
+                source_path / defaults.TOOLCHAIN_DOCKERFILE)
+            provenance.show_source("KOS", source)
+            if "makejobs" not in arguments:
+                print("Dockerfile does not declare makejobs; using upstream concurrency defaults.")
+            print("Building Docker image... This may take a while. "
+                  f"dc_chain_profile: {spec.profile}")
+            print(f"Running command: {docker.display_command(plan.command)}")
+            if metadata_file is None:
+                docker.execute_build(plan.command, "Toolchain Docker build")
+            else:
+                docker.recorded_build(plan.command, report, description="Toolchain Docker build")
+    print(f"Successfully built Docker image: {plan.image}")
+
+
+def build_full_image(spec, plan, metadata_file=None):
+    """Read source evidence from the output image only when a report was requested."""
+    if metadata_file is None:
+        docker.execute_build(plan.command)
+        return
+    report = provenance.new_report("kos-image", spec, plan)
+    report["profile"] = None  # An image tag does not prove the compiler profile in that image.
+    report["toolchain_tag"] = spec.profile if spec.base_image is None else None
+    base = full_image_base(spec)
+    report["base"] = {"reference": base, "digest": validation.image_reference(base)["digest"],
+                      "evidence": "digest-qualified build input" if "@" in base else
+                      "unknown: mutable base tag was not resolved independently"}
+    report["sources"] = {
+        name: {"requested_ref": ref, "commit": None, "dirty": None, "state": "unknown"}
+        for name, ref in (("kos", spec.kos_ref), ("kos_ports", spec.kos_ports_ref),
+                          ("gldc", spec.gldc_ref))
+    }
+
+    def collect(image_id, directory):
+        manifest = directory / "sources.json"
+        docker.copy_image_file(image_id, "/usr/local/share/dcdocker/sources.json", manifest)
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            if data["schema_version"] != 1 or set(data["sources"]) != set(report["sources"]):
+                raise ValueError("Unexpected source manifest schema")
+            for name, expected in report["sources"].items():
+                observed = data["sources"][name]
+                if (observed["requested_ref"] != expected["requested_ref"]
+                        or not provenance.COMMIT.fullmatch(observed["commit"])
+                        or not isinstance(observed["dirty"], bool)
+                        or observed["state"] != ("dirty" if observed["dirty"] else "clean")):
+                    raise ValueError(f"Invalid build evidence for {name}")
+                if (provenance.COMMIT.fullmatch(expected["requested_ref"].lower())
+                        and observed["commit"] != expected["requested_ref"].lower()):
+                    raise ValueError(f"Pinned commit mismatch for {name}")
+            report["sources"] = data["sources"]
+            for name, observed in report["sources"].items():
+                provenance.show_source(name, observed)
+        except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
+            raise click.ClickException(f"Cannot verify image source metadata: {error}") from error
+
+    with provenance.reporting(metadata_file, report):
+        report["dockerfile"] = provenance.file_identity(Path(plan.command[-1]) / "Dockerfile")
+        docker.recorded_build(plan.command, report, collect=collect)

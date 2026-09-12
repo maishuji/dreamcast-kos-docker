@@ -27,13 +27,35 @@ if Path(sys.argv[0]).name == 'git':
     profile.write_text('# Test profile\\n')
 else:
     args = sys.argv[1:]
+    if args[0] == 'create':
+        assert args[-1] == 'sha256:' + 'a' * 64
+        print('b' * 64)
+        sys.exit(0)
+    if args[0] == 'cp':
+        captured = json.loads(Path(os.environ['DCDOCKER_CAPTURE']).read_text())
+        sources = {}
+        for name, key in (('kos', 'snapshot_kos'), ('kos_ports', 'snapshot_kosports'),
+                          ('gldc', 'snapshot_gldc')):
+            ref = next(arg.split('=', 1)[1] for arg in captured['args']
+                       if arg.startswith(key + '='))
+            sources[name] = {'requested_ref': ref, 'commit': 'c' * 40,
+                             'repository': 'https://example.org/source', 'path': '/source',
+                             'dirty': False, 'state': 'clean'}
+        Path(args[-1]).write_text(json.dumps({'schema_version': 1, 'sources': sources}))
+        sys.exit(0)
+    if args[0] == 'rm':
+        assert args[-1] == 'b' * 64
+        sys.exit(0)
     assert args[0] == 'build'
+    if '--iidfile' in args:
+        Path(args[args.index('--iidfile') + 1]).write_text('sha256:' + 'a' * 64)
     context = Path(args[-1])
     if '-f' in args:
         assert Path(args[args.index('-f') + 1]).is_file()
         files = {}
     else:
-        files = {name: (context / name).read_text() for name in ('Dockerfile', 'apk-retry.sh')}
+        files = {name: (context / name).read_text()
+                 for name in ('Dockerfile', 'apk-retry.sh', 'source_build.py')}
     Path(os.environ['DCDOCKER_CAPTURE']).write_text(json.dumps({'args': args, 'files': files}))
     sys.exit(int(os.environ.get('DCDOCKER_FAKE_EXIT', '0')))
 '''
@@ -155,6 +177,23 @@ class PackageInstallTests(unittest.TestCase):
         env["DCDOCKER_ALLOW_DISCOVERY"] = "0"
         self.check_builds(venv / "bin/dcdocker", workspace, env)
         self.check_automation(venv / "bin/dcdocker", workspace, env)
+        self.check_metadata(venv / "bin/dcdocker", workspace, env)
+
+    def check_metadata(self, executable, workspace, env):
+        """Installed reports use packaged helpers and resolve evidence from a build ID."""
+        for kind in ("dc-chain", "kos-image"):
+            output = workspace / f"{kind}.json"
+            selection = (["--kos-path", str(workspace / "local kos")] if kind == "dc-chain"
+                         else ["--kos-ref", "master", "--kos-ports-ref", "master",
+                               "--gldc-ref", "master", "--non-interactive"])
+            self.run_command([str(executable), "build", kind, "-u", "test", *selection,
+                              "--metadata-file", str(output)], cwd=workspace, env=env)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(report["schema_version"], 1)
+            self.assertEqual(report["status"], "success")
+            self.assertEqual(report["image"]["id"], "sha256:" + "a" * 64)
+            if kind == "kos-image":
+                self.assertEqual(report["sources"]["gldc"]["commit"], "c" * 40)
 
     def check_builds(self, executable, workspace, env):
         """Exercise real CLI/process boundaries without a Docker daemon or remote Git."""

@@ -41,24 +41,24 @@ RUN mkdir -p /opt/toolchains/dc && \
     mkdir -p /opt/toolchains/dc/bin && \
     chown -R $(id -u):$(id -g) /opt/toolchains/dc
 
+COPY source_build.py /usr/local/lib/dcdocker/source_build.py
+
 SHELL ["/bin/bash", "-c"]
 
-RUN echo "Cloning branch: ${SNAPSHOT_KOS}" && \
-    echo "Cloning branch: $SNAPSHOT_KOS " && \
-    git clone --depth 1 --branch "$SNAPSHOT_KOS" https://github.com/maishuji/KallistiOS.git /opt/toolchains/dc/kos
+RUN python3 /usr/local/lib/dcdocker/source_build.py checkout \
+    https://github.com/maishuji/KallistiOS.git "$SNAPSHOT_KOS" /opt/toolchains/dc/kos
 
 # Configuring environ.sh
 RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
     source /opt/toolchains/dc/kos/environ.sh && pwd && \
     make
 
-# Kos-ports
-RUN echo "Checkout kos-ports" && source /opt/toolchains/dc/kos/environ.sh && \
-git clone --branch "$snapshot_kosports" --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports && \
-cd /opt/toolchains/dc/kos-ports/libGL && \
-sed -i 's|https://gitlab.com/simulant/GLdc.git|https://gitlab.com/quentin.cartier.dev/GLdc.git|g' Makefile && \
-echo "new3" && \
-sed -i "/GIT_REPOSITORY/s|$|\nGIT_BRANCH = $snapshot_gldc|" Makefile
+# Fetch once, including full commit IDs, then preserve submodule revisions.
+RUN python3 /usr/local/lib/dcdocker/source_build.py checkout \
+    https://github.com/maishuji/kos-ports "$SNAPSHOT_KOSPORTS" /opt/toolchains/dc/kos-ports && \
+    git -C /opt/toolchains/dc/kos-ports submodule update --init --recursive && \
+    python3 /usr/local/lib/dcdocker/source_build.py prepare-gldc \
+    /opt/toolchains/dc/kos-ports "$SNAPSHOT_GLDC"
 
 # (optional)If you want to compile libraries individually. In that case,
 # you need to comment the build_all.sh call part
@@ -80,7 +80,10 @@ RUN rm -rf /opt/toolchains/dc/kos-ports/{libjimtcl,mruby,libmp3,cglm}
 # Building kos-ports libraries and install them
 # You may not want that if you just need specific libraries
 RUN source /opt/toolchains/dc/kos/environ.sh && \
-   /opt/toolchains/dc/kos-ports/utils/build-all.sh
+    make -C /opt/toolchains/dc/kos-ports/libGL install && \
+    python3 /usr/local/lib/dcdocker/source_build.py record-gldc && \
+    /opt/toolchains/dc/kos-ports/utils/build-all.sh && \
+    python3 /usr/local/lib/dcdocker/source_build.py record
 
 # Remove broken examle kgl
 #RUN sed -e s/kgl//g -i /opt/toolchains/dc/kos/examples/dreamcast/Makefile && cat /opt/toolchains/dc/kos/examples/dreamcast/Makefile

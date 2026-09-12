@@ -72,7 +72,7 @@ make test-package
 
 `make test-package` builds a wheel and source archive, rebuilds a wheel from that archive, installs both into isolated environments, and checks the installed executable outside the checkout. Provisioning may require package-index access; runtime checks use fake Git/Docker commands and controlled discovery responses. CI runs these package checks on Python 3.11 and 3.13. The ordinary `make test` suite skips the opt-in package test.
 
-The package separates CLI prompts (`cli.py`), build specifications and planning (`builds.py`), source discovery and checkout ownership (`sources.py`), Docker commands (`docker.py`), and Python defaults (`defaults.py`). The canonical ready-image recipe and helper live in [`src/dcdocker/assets/kos-ready/`](src/dcdocker/assets/kos-ready/). They are included in the package and copied to a temporary context for each full-image invocation. That context stays available during Docker execution and is removed after success, failure, cancellation, or interruption.
+The package separates CLI prompts (`cli.py`), build specifications and planning (`builds.py`), source discovery and checkout ownership (`sources.py`), Docker commands (`docker.py`), source observations and metadata (`provenance.py`), and Python defaults (`defaults.py`). The canonical ready-image recipe and helpers live in [`src/dcdocker/assets/kos-ready/`](src/dcdocker/assets/kos-ready/). They are included in the package and copied to a temporary context for each full-image invocation. That context stays available during Docker execution and is removed after success, failure, cancellation, or interruption.
 
 Dependencies are declared in `pyproject.toml`, and `uv.lock` pins their resolved versions, including transitive dependencies. Use `uv add <package>` or `uv add --dev <package>` to add dependencies, and commit both files together. The `--locked` flag makes setup fail if the lockfile needs updating; run `uv lock` after editing dependencies manually.
 
@@ -98,14 +98,15 @@ uv run --locked --no-dev dcdocker build kos-image -u yourname --kos-ports-ref fe
 | `-u`, `--namespace`, `--username` | Yes | Namespace for the resulting `dc-kos-image` image. |
 | `--toolchain-tag`, `-p`, `--profile` | No | Base toolchain image tag; defaults to `16.2.0`. |
 | `-g`, `--gdb` | No | Use the `dc-chain-gdb` base image and add `gdb-` after the profile in the output tag. |
-| `--kos-ref` | For automation | KOS branch or tag; skips its source menu and discovery request. |
-| `--kos-ports-ref`, `--kos-ports-branch` | For automation | kos-ports branch or tag; skips its source menu and discovery request. |
-| `--gldc-ref` | For automation | GLdc branch or tag; skips its source menu and discovery request. |
+| `--kos-ref` | For automation | KOS branch, tag or full 40-character commit ID; skips its source menu and discovery request. |
+| `--kos-ports-ref`, `--kos-ports-branch` | For automation | kos-ports branch, tag or full 40-character commit ID; skips its source menu and discovery request. |
+| `--gldc-ref` | For automation | GLdc branch, tag or full 40-character commit ID; skips its source menu and discovery request. |
 | `--base-image` | No | Complete base reference, including registry/port, tag or digest. Conflicts with an explicitly supplied `--toolchain-tag`, `--profile`, or `-p`. |
 | `--image-tag` | For untagged/digest-only custom bases | Output tag override; independent of the base tag. |
 | `--non-interactive` | No | Require all three refs and execute without reading stdin or confirming. |
 | `--yes` | No | Skip final confirmation only; missing refs still require terminal menus. |
 | `--dry-run` | No | Offline preview requiring all three refs; no prompts, HTTP, Git, Docker, or temporary context. |
+| `--metadata-file` | No | Write version 1 build metadata to a new JSON file; never written by dry-run. |
 | `--help` | No | Display command-line help and exit. |
 
 For a fully specified build from a terminal or CI:
@@ -119,7 +120,7 @@ uv run --locked --no-dev dcdocker build kos-image --namespace yourname \
   --kos-ref master --kos-ports-ref master --gldc-ref master --dry-run
 ```
 
-Explicit refs bypass their discovery requests. Execution may still need network access for Git clones inside Docker, packages, and base images. Refs initially support branches/tags containing ASCII letters, digits, dots, underscores, slashes and hyphens. They must start with a letter, digit or underscore and cannot contain empty/dot-prefixed components, `..`, a trailing dot, or `.lock` component suffixes. Arbitrary commit checkout is not implemented: a commit hash is not an immutable-source guarantee with the current branch/tag recipe.
+Explicit refs bypass their discovery requests. Execution may still need network access for Git clones inside Docker, packages, and base images. Refs support branches/tags containing ASCII letters, digits, dots, underscores, slashes and hyphens. They must start with a letter, digit or underscore and cannot contain empty/dot-prefixed components, `..`, a trailing dot, or `.lock` component suffixes. All three sources also accept full 40-character Git commit IDs. Each requested ref is fetched once and checked out detached; a missing or inaccessible ref fails without falling back to the default branch. Use `refs/heads/<name>` or `refs/tags/<name>` to distinguish an ambiguous branch/tag name. Abbreviated hashes are not supported as commit pins.
 
 Enter the **number** beside each choice when prompted:
 
@@ -153,7 +154,7 @@ docker build --build-arg base_image=yourname/dc-chain:16.2.0 \
 
 By default, the toolchain command makes a fresh shallow clone of `https://github.com/KallistiOS/KallistiOS.git` in a temporary directory. It uses the remote's default branch and builds with that checkout's `utils/kos-chain/docker/Dockerfile`, using the same checkout as the Docker build context. The temporary checkout is removed after the build, including on failure. Each invocation needs Git and network access; later invocations can use newer upstream sources.
 
-To use a specific revision, a fork, or local changes, pass `--kos-path /path/to/KallistiOS`. The command uses that directory as-is: it does not fetch updates or modify the checkout. It prints whether it is using fresh or local sources, along with the source path, before building. Docker may still need network access to download images, packages, and compiler sources in either mode.
+To select an upstream branch, tag or full commit, use `--kos-ref REF`. This fetches the requested ref into a fresh detached checkout and conflicts with `--kos-path`. To use a fork or local changes, pass `--kos-path /path/to/KallistiOS`. The command uses that directory as-is: it does not fetch updates or modify the checkout. It reports the source path, origin repository when available, actual HEAD commit, and clean/dirty state before building. Git inspection disables optional index writes. Valid source directories without `.git` remain usable and report an unknown commit and dirty state; missing or failed Git inspection is also explicit. HTTP origin credentials and query parameters are omitted from reports. Docker may still need network access to download images, packages, and compiler sources in either mode.
 
 The selected sources must contain `utils/kos-chain/docker/Dockerfile` and the chosen profile under `utils/kos-chain/profiles/dreamcast`. See the upstream [KOS Toolchain Profiles](https://github.com/KallistiOS/KallistiOS/tree/master/utils/kos-chain/profiles/dreamcast), or the profiles in your local checkout when using `--kos-path`.
 
@@ -180,9 +181,11 @@ uv run --locked --no-dev dcdocker build dc-chain -u yourname -p 16.2.0 --kos-pat
 | `-p`, `--profile` | No | Toolchain build profile and output image tag; defaults to `16.2.0`. |
 | `-g`, `--gdb`, `--use-gdb` | No | Include GDB using the upstream `include_gdb=1` build argument; output `<username>/dc-chain-gdb:<profile>`. |
 | `--kos-path` | No | Use an existing local KallistiOS source directory instead of a fresh upstream checkout. No updates are fetched. |
+| `--kos-ref` | No | Fetch an upstream branch, tag or full commit into a detached checkout; conflicts with `--kos-path`. |
 | `--image-tag` | No | Override the output tag while keeping the selected source profile. |
 | `--non-interactive` | No | Explicitly request execution without stdin (toolchain builds already have no menus). |
 | `--dry-run` | No | Print inputs and planned clone/build commands without executing them. |
+| `--metadata-file` | No | Write version 1 build metadata to a new JSON file; never written by dry-run. |
 | `--help` | No | Display command-line help and exit. |
 
 Unless `--dry-run` is supplied, this command starts the Docker build immediately, without a confirmation prompt. Before Docker runs, it checks that the selected `profiles/dreamcast/<profile>.mk` is readable and the Dockerfile declares `ARG profile`. Custom local profiles are supported. It passes `makejobs=4` only when the Dockerfile declares that argument; otherwise it reports that upstream concurrency defaults apply. Without `--use-gdb`, it passes `include_gdb=0` only when declared and produces `<username>/dc-chain:<profile>`.
@@ -196,6 +199,26 @@ uv run --locked --no-dev dcdocker build dc-chain -u yourname -p 16.2.0 --gdb
 uv run --locked --no-dev dcdocker build dc-chain -u yourname -p 16.2.0 \
   --image-tag my-toolchain --dry-run
 ```
+
+### Source Pins and Build Metadata
+
+Use a full commit ID for each source you want to pin. Branches and tags can move, and Docker may reuse a cached source-fetch layer. The recorded commits identify the checkouts used by that build, including cached layers. Pinning sources does not make the entire image reproducible: base tags, package repositories, compiler downloads and other tools can still change.
+
+```sh
+# Replace the placeholder with a full upstream commit ID.
+dcdocker build dc-chain --namespace yourname --kos-ref FULL_KOS_COMMIT \
+  --metadata-file toolchain-build.json
+
+dcdocker build kos-image --namespace yourname \
+  --kos-ref FULL_KOS_COMMIT --kos-ports-ref FULL_PORTS_COMMIT \
+  --gldc-ref FULL_GLDC_COMMIT --non-interactive --metadata-file kos-build.json
+```
+
+The ready-image recipe seeds GLdc's `libGL/dist` checkout, fixes its `GIT_TAG` to the resolved commit to prevent a pull, and verifies the unpacked source used by `make install`. Unsupported kos-ports fetch/unpack layouts fail clearly. Source observations are embedded at `/usr/local/share/dcdocker/sources.json`; build logs show commits when those stages execute.
+
+`--metadata-file` requires a new file in an existing writable directory, outside any selected local KOS source directory. Existing files are never overwritten. A report starts as `running`, then records `success`, `failed` or `cancelled`. A killed process or failed final write can leave `running`; that is not success. Metadata errors cause a nonzero exit even when Docker has already built the image. Reports include requested/resolved refs, local source state, the Dockerfile SHA-256, profile/GDB request, output image ID and base reference. A base digest is recorded only for a digest-qualified input; moving base tags remain unresolved.
+
+Full-image reports read embedded source evidence from the exact output ID written by Docker's `--iidfile`. Collection creates a stopped container, copies the manifest, and removes that container and its anonymous volumes; it never starts the image or pulls for inspection. See [build metadata version 1](docs/build-metadata.md) for fields and evidence limits.
 
 ### Use Your Own Toolchain in the Full Image
 

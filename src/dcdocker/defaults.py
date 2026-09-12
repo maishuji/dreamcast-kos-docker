@@ -12,4 +12,4 @@ REF_PAGE_SIZE = 100
 MAX_REF_PAGES = 20
 TOOLCHAIN_PROFILES = "utils/kos-chain/profiles/dreamcast"
 TOOLCHAIN_DOCKERFILE = "utils/kos-chain/docker/Dockerfile"
-READY_CONTEXT_FILES = ("Dockerfile", "apk-retry.sh")
+READY_CONTEXT_FILES = ("Dockerfile", "apk-retry.sh", "source_build.py")

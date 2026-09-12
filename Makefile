@@ -3,7 +3,7 @@ UV ?= uv
 .PHONY: lint test test-package create-env create-dev-env
 
 lint:
-	$(UV) run --locked python -m pylint src/dcdocker build_dc_toolchain_image.py build_dc_kos_full_image.py tests
+	$(UV) run --locked python -m pylint src/dcdocker src/dcdocker/assets/kos-ready/source_build.py build_dc_toolchain_image.py build_dc_kos_full_image.py tests
 
 test:
 	$(UV) run --locked python -m unittest discover -s tests -v

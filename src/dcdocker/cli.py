@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from dcdocker import builds, defaults, docker, sources
+from dcdocker import builds, defaults, docker, sources, validation
 
 
 def prompt_choice(prompt, choices):
@@ -97,6 +97,9 @@ def choose_snapshot_gldc():
     help="Use this local KallistiOS checkout as-is instead of cloning fresh upstream sources.",
 )
 @click.option("--image-tag", help="Override the output image tag")
+@click.option("--kos-ref", help="Remote KOS branch, tag or full commit; conflicts with --kos-path")
+@click.option("--metadata-file", type=click.Path(path_type=Path, dir_okay=False),
+              help="Write versioned build metadata to a new JSON file")
 @click.option("--non-interactive", is_flag=True, help="Never read stdin")
 @click.option("--dry-run", is_flag=True, help="Preview without Git, Docker or network access")
 def toolchain_command(**options):
@@ -104,6 +107,13 @@ def toolchain_command(**options):
 
     Use --kos-path to build from existing local sources without fetching updates.
     """
+    if options["kos_ref"] is not None:
+        validation.source_ref(options["kos_ref"], "--kos-ref")
+        if options["kos_path"] is not None:
+            raise click.UsageError("--kos-path conflicts with --kos-ref")
+    if (options["kos_path"] is not None and options["metadata_file"] is not None
+            and options["metadata_file"].resolve().is_relative_to(options["kos_path"])):
+        raise click.UsageError("--metadata-file must be outside the local KOS source directory")
     spec = builds.ToolchainBuild(options["username"], options["profile"], options["use_gdb"],
                                  image_tag=options["image_tag"])
     source = options["kos_path"] or Path("<fresh-kos>")
@@ -114,17 +124,30 @@ def toolchain_command(**options):
         if options["kos_path"] is None:
             print("Source: fresh upstream checkout; commit unresolved; "
                   "<fresh-kos> is a placeholder.")
-            print(docker.display_command(
-                ("git", "clone", "--depth", "1", defaults.KOS_REPOSITORY, str(source))
-            ))
+            if options["kos_ref"] is None:
+                print(docker.display_command(
+                    ("git", "clone", "--depth", "1", defaults.KOS_REPOSITORY, str(source))
+                ))
+            else:
+                print(f"Requested ref: {options['kos_ref']} (not verified)")
+                print(docker.display_command(("git", "init", str(source))))
+                print(docker.display_command(("git", "-C", str(source), "remote", "add",
+                                              "origin", defaults.KOS_REPOSITORY)))
+                print(docker.display_command(("git", "-C", str(source), "fetch", "--depth",
+                                              "1", "origin", options["kos_ref"])))
+                print(docker.display_command(("git", "-C", str(source), "checkout",
+                                              "--detach", "FETCH_HEAD")))
         else:
             print(f"Source: {source} (used as-is; revision not resolved)")
         print("Preview only; source capabilities and image availability have not been verified.")
         print("Optional makejobs/include_gdb arguments depend on checkout declarations "
               "at build time.")
         print(docker.display_command(plan.command))
+        if options["metadata_file"] is not None:
+            print(f"Metadata destination: {options['metadata_file']} (not written in preview)")
     else:
-        builds.build_toolchain(spec, options["kos_path"])
+        builds.build_toolchain(spec, options["kos_path"], kos_ref=options["kos_ref"],
+                               metadata_file=options["metadata_file"])
 
 
 @click.command()
@@ -147,7 +170,7 @@ def toolchain_command(**options):
     "kos_ports_branch",
     type=str,
     default=None,
-    help="kos-ports branch or tag to use instead of the interactive snapshot selection.",
+    help="kos-ports branch, tag or full commit instead of interactive selection.",
 )
 @click.option(
     "-g",
@@ -156,10 +179,12 @@ def toolchain_command(**options):
     default=False,
     help="Build with GDB support",
 )
-@click.option("--kos-ref", help="KOS branch/tag; skip its discovery menu")
-@click.option("--gldc-ref", help="GLdc branch/tag; skip its discovery menu")
+@click.option("--kos-ref", help="KOS branch, tag or full commit; skip its discovery menu")
+@click.option("--gldc-ref", help="GLdc branch, tag or full commit; skip its discovery menu")
 @click.option("--base-image", help="Complete base reference, overriding the default base selection")
 @click.option("--image-tag", help="Override the output image tag")
+@click.option("--metadata-file", type=click.Path(path_type=Path, dir_okay=False),
+              help="Write versioned build metadata to a new JSON file")
 @click.option("--non-interactive", is_flag=True, help="Require all refs and build without stdin")
 @click.option("--yes", is_flag=True, help="Skip final confirmation only")
 @click.option("--dry-run", is_flag=True, help="Offline preview; requires all three source refs")
@@ -175,6 +200,8 @@ def full_image_command(ctx, **options):
         show_full_image(spec, plan)
         print("Preview only; <packaged-context> is a placeholder. Source commits are unresolved;")
         print("base availability, source existence and GDB contents have not been verified.")
+        if options["metadata_file"] is not None:
+            print(f"Metadata destination: {options['metadata_file']} (not written in preview)")
         return
     with sources.ready_context() as build_context:
         plan = builds.plan_full_image(spec, build_context)
@@ -182,7 +209,7 @@ def full_image_command(ctx, **options):
         if (options["non_interactive"] or options["yes"]
                 or prompt_choice("Do you want to continue ?", ["Yes", "No"]) == "Yes"):
             print("Running ...")
-            docker.execute_build(plan.command)
+            builds.build_full_image(spec, plan, options["metadata_file"])
         else:
             print("Operation cancelled ... ")
             raise SystemExit(1)
