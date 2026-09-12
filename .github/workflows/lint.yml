@@ -85,3 +85,16 @@ jobs:
         run: make create-dev-env
       - name: Validate wheel and sdist installations outside checkout
         run: make test-package
+
+  dockerfile-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check supported Dockerfile
+        run: docker build --check --build-arg base_image=maishuji/dc-chain:16.2.0 src/dcdocker/assets/kos-ready
+
+      - name: Check legacy Alpine Dockerfile
+        run: docker build --check --build-arg dc_chain_version=16.2.0 -f kos-alpine/Dockerfile .
