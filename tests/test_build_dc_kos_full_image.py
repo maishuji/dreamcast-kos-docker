@@ -225,7 +225,7 @@ class FullImageBuildTests(unittest.TestCase):
                 root = Path.cwd()
                 context = root / "assets/kos-ready"
                 context.mkdir(parents=True)
-                for name in ("Dockerfile", "apk-retry.sh"):
+                for name in defaults.READY_CONTEXT_FILES:
                     if name != missing:
                         (context / name).write_text("fixture", encoding="utf-8")
                 with patch.object(sources.resources, "files", return_value=root):
@@ -239,7 +239,7 @@ class FullImageBuildTests(unittest.TestCase):
             root = Path.cwd() / "repo with spaces"
             context = root / "assets/kos-ready"
             context.mkdir(parents=True)
-            for name in ("Dockerfile", "apk-retry.sh"):
+            for name in defaults.READY_CONTEXT_FILES:
                 (context / name).write_text("fixture", encoding="utf-8")
             with patch.object(sources.resources, "files", return_value=root):
                 result = self.invoke()

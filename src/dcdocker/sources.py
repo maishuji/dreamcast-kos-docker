@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 import click
 import requests
 
-from dcdocker import defaults
+from dcdocker import defaults, provenance, validation
 
 
 def fetch_ref_page(url, source, page):
@@ -141,8 +141,12 @@ def fetch_release_branches_gldc():
 
 
 @contextmanager
-def toolchain_checkout(kos_path=None):
+def toolchain_checkout(kos_path=None, kos_ref=None):
     """Yield local sources unchanged or a fresh checkout owned by this invocation."""
+    if kos_path is not None and kos_ref is not None:
+        raise click.UsageError("--kos-path conflicts with --kos-ref")
+    if kos_ref is not None:
+        validation.source_ref(kos_ref, "--kos-ref")
     if kos_path is not None:
         source_path = Path(kos_path).expanduser().resolve()
         print(f"Using local KallistiOS sources: {source_path} (no updates fetched)")
@@ -151,6 +155,10 @@ def toolchain_checkout(kos_path=None):
 
     with TemporaryDirectory(prefix="dc-chain-kos-") as temporary_directory:
         source_path = Path(temporary_directory) / "kos"
+        if kos_ref is not None:
+            checkout_ref(defaults.KOS_REPOSITORY, kos_ref, source_path)
+            yield source_path
+            return
         print(f"Cloning fresh KallistiOS sources from {defaults.KOS_REPOSITORY}")
         try:
             subprocess.run(
@@ -168,6 +176,25 @@ def toolchain_checkout(kos_path=None):
             ) from process_error
         print(f"Using fresh KallistiOS sources: {source_path}")
         yield source_path
+
+
+def checkout_ref(repository, ref, destination):
+    """Fetch the requested ref once and detach at its commit; never fall back to HEAD."""
+    commands = (["git", "init", str(destination)],
+                ["git", "-C", str(destination), "remote", "add", "origin", repository],
+                ["git", "-C", str(destination), "fetch", "--depth", "1", "origin", ref],
+                ["git", "-C", str(destination), "checkout", "--detach", "FETCH_HEAD"])
+    try:
+        for command in commands:
+            subprocess.run(command, check=True, timeout=300)
+        commit = provenance.git_read(destination, "rev-parse", "--verify", "HEAD^{commit}")
+        if not provenance.COMMIT.fullmatch(commit) or (
+                provenance.COMMIT.fullmatch(ref.lower()) and commit != ref.lower()):
+            raise click.ClickException(f"Checkout does not match requested commit {ref}.")
+    except (OSError, subprocess.SubprocessError) as error:
+        raise click.ClickException(
+            f"Cannot check out KallistiOS ref {ref!r}: {error}. No fallback was attempted."
+        ) from error
 
 
 def dockerfile_arguments(dockerfile):

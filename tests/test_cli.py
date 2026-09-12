@@ -96,6 +96,7 @@ class ResourceTests(unittest.TestCase):
             with zipfile.ZipFile("assets.zip", "w") as archive:
                 archive.writestr("assets/kos-ready/Dockerfile", "FROM scratch\n")
                 archive.writestr("assets/kos-ready/apk-retry.sh", "#!/bin/sh\n")
+                archive.writestr("assets/kos-ready/source_build.py", "# source helper\n")
                 archive.writestr("assets/kos-ready/nested/file", "extra context data")
             with zipfile.ZipFile("assets.zip") as archive:
                 with patch.object(sources.resources, "files", return_value=zipfile.Path(archive)):
