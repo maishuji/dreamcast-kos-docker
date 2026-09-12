@@ -56,7 +56,7 @@ RUN rm -rf /opt/toolchains/dc/kos-ports/libjimtcl && \
 #RUN source /opt/toolchains/dc/kos/environ.sh && \
 #   /opt/toolchains/dc/kos-ports/utils/build-all.sh
 
-# Remove broken examle kgl
+# Remove broken example kgl
 #RUN sed -e s/kgl//g -i /opt/toolchains/dc/kos/examples/dreamcast/Makefile && cat /opt/toolchains/dc/kos/examples/dreamcast/Makefile
 
 # mkdcdisc
@@ -93,7 +93,7 @@ RUN addgroup \
     --uid "$UID" \
     --home /home/$USER \
     $USER \
-    && chown -R $USER:$GROUPNAME /home/$USER
+    && chown -R $USER:$GROUPNAME /home/$USER /opt/toolchains/dc
 
 # ********************************************************
 # * Anything else you want to do like clean up goes here *
