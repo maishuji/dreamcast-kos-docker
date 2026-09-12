@@ -1,0 +1,151 @@
+name: Docker Smoke Checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Image variant to validate
+        required: true
+        type: choice
+        options:
+          - normal
+          - gdb
+        default: normal
+      build_toolchain:
+        description: Rebuild the toolchain from upstream sources first
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  PROFILE: 16.2.0
+  KOS_REPOSITORY: https://github.com/KallistiOS/KallistiOS.git
+
+jobs:
+  build-and-smoke:
+    name: ${{ inputs.variant }} image
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    concurrency:
+      group: docker-smoke-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      VARIANT: ${{ inputs.variant }}
+      BUILD_TOOLCHAIN: ${{ inputs.build_toolchain }}
+      INCLUDE_GDB: ${{ inputs.variant == 'gdb' && '1' || '0' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out KallistiOS toolchain sources
+        if: inputs.build_toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p "ci-artifacts/$VARIANT"
+          git clone --depth 1 "$KOS_REPOSITORY" "$RUNNER_TEMP/kos"
+          git -C "$RUNNER_TEMP/kos" rev-parse HEAD | tee "ci-artifacts/$VARIANT/kos-revision.txt"
+
+      - name: Select toolchain base image
+        run: |
+          set -euo pipefail
+          if [ "$BUILD_TOOLCHAIN" = true ]; then
+            echo "BASE_IMAGE=dcdocker/dc-chain:$VARIANT" >> "$GITHUB_ENV"
+          elif [ "$INCLUDE_GDB" = 1 ]; then
+            echo "BASE_IMAGE=maishuji/dc-chain-gdb:$PROFILE" >> "$GITHUB_ENV"
+          else
+            echo "BASE_IMAGE=maishuji/dc-chain:$PROFILE" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build toolchain image
+        if: inputs.build_toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p "ci-artifacts/$VARIANT"
+          set -o pipefail
+          docker build --progress=plain \
+            --build-arg "profile=$PROFILE" \
+            --build-arg makejobs=4 \
+            --build-arg "include_gdb=$INCLUDE_GDB" \
+            --tag "dcdocker/dc-chain:$VARIANT" \
+            --file "$RUNNER_TEMP/kos/utils/kos-chain/docker/Dockerfile" \
+            "$RUNNER_TEMP/kos" 2>&1 | tee "ci-artifacts/$VARIANT/toolchain-build.log"
+
+      - name: Verify toolchain image
+        if: inputs.build_toolchain
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/bash \
+            --env "INCLUDE_GDB=$INCLUDE_GDB" \
+            "dcdocker/dc-chain:$VARIANT" \
+            -lc '
+              set -euo pipefail
+              command -v sh-elf-gcc
+              sh-elf-gcc --version
+              if [ "$INCLUDE_GDB" = 1 ]; then
+                command -v sh-elf-gdb
+                sh-elf-gdb --version
+              fi
+            ' 2>&1 | tee "ci-artifacts/$VARIANT/toolchain-smoke.log"
+
+      - name: Build ready development image
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          docker build --progress=plain \
+            --build-arg "base_image=$BASE_IMAGE" \
+            --build-arg snapshot_kos=master \
+            --build-arg snapshot_kosports=master \
+            --build-arg snapshot_gldc=master \
+            --tag "dcdocker/kos-ready:$VARIANT" \
+            src/dcdocker/assets/kos-ready 2>&1 | tee "ci-artifacts/$VARIANT/ready-build.log"
+
+      - name: Verify image tools and compile KOS hello example
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/bash \
+            --env "INCLUDE_GDB=$INCLUDE_GDB" \
+            "dcdocker/kos-ready:$VARIANT" \
+            -lc '
+              set -eo pipefail
+              test "$(id -u)" -ne 0
+              source /opt/toolchains/dc/kos/environ.sh
+              set -u
+              command -v sh-elf-gcc
+              sh-elf-gcc --version
+              test -x /usr/local/bin/mkdcdisc
+              cpplint --version
+              if [ "$INCLUDE_GDB" = 1 ]; then
+                command -v sh-elf-gdb
+                sh-elf-gdb --version
+              fi
+              make -C /opt/toolchains/dc/kos/examples/dreamcast/hello clean all
+            ' 2>&1 | tee "ci-artifacts/$VARIANT/ready-smoke.log"
+
+      - name: Capture build identities and source manifest
+        if: always()
+        run: |
+          set -euo pipefail
+          docker image inspect "dcdocker/dc-chain:$VARIANT" \
+            > "ci-artifacts/$VARIANT/toolchain-image.json" || true
+          docker image inspect "dcdocker/kos-ready:$VARIANT" \
+            > "ci-artifacts/$VARIANT/ready-image.json" || true
+          docker create --name "dcdocker-source-$VARIANT" \
+            "dcdocker/kos-ready:$VARIANT" /bin/true || true
+          if docker container inspect "dcdocker-source-$VARIANT" >/dev/null 2>&1; then
+            docker cp "dcdocker-source-$VARIANT:/usr/local/share/dcdocker/sources.json" \
+              "ci-artifacts/$VARIANT/sources.json" || true
+            docker rm -f -v "dcdocker-source-$VARIANT" || true
+          fi
+
+      - name: Upload Docker smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-smoke-${{ inputs.variant }}
+          path: ci-artifacts/${{ inputs.variant }}
+          if-no-files-found: warn
+          retention-days: 7
