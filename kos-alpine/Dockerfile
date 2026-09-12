@@ -23,7 +23,7 @@ RUN git clone --depth 1 --branch 01FEB25 https://github.com/maishuji/KallistiOS.
 
 # Configuring environ.sh
 RUN cd /opt/toolchains/dc/kos && cp doc/environ.sh.sample ./environ.sh && \
-    source /opt/toolchains/dc/kos/environ.sh && pwd && \
+    source /opt/toolchains/dc/kos/environ.sh && \
     make
 
 # Kos-ports
@@ -31,7 +31,6 @@ RUN echo "Checkout kos-ports" && source /opt/toolchains/dc/kos/environ.sh && \
 git clone --recursive https://github.com/maishuji/kos-ports /opt/toolchains/dc/kos-ports && \
 cd /opt/toolchains/dc/kos-ports/libGL && \
 sed -i 's|https://gitlab.com/simulant/GLdc.git|https://gitlab.com/quentin.cartier.dev/GLdc.git|g' Makefile && \
-echo "new3" && \
 sed -i '/GIT_REPOSITORY/s|$|\nGIT_BRANCH = release/07DEC24|' Makefile
 
 RUN source /opt/toolchains/dc/kos/environ.sh && \
@@ -63,7 +62,7 @@ RUN rm -rf /opt/toolchains/dc/kos-ports/libjimtcl && \
 # mkdcdisc
 RUN source /opt/toolchains/dc/kos/environ.sh && \
     git clone https://gitlab.com/simulant/mkdcdisc.git /opt/toolchains/dc/mkdcdisc && \
-    cd /opt/toolchains/dc/ && ls && \
+    cd /opt/toolchains/dc/ && \
     cd mkdcdisc && \
     meson setup builddir && \
     meson compile -C builddir && \
