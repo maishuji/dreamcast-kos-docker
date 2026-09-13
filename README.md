@@ -308,6 +308,14 @@ Both script filenames remain available as compatibility entry points and print o
 | Full-image `--profile` / `-p` | `--toolchain-tag` |
 | `--kos-ports-branch` | `--kos-ports-ref` |
 | Direct Docker context `./kos-ready/` | `./src/dcdocker/assets/kos-ready/` |
+
+The compatibility policy is deliberate: the legacy scripts remain supported for
+at least one compatibility release after the installed CLI migration. They are
+not removed in the current migration work. Any later removal must be announced
+in release notes, after users have had that compatibility window, and must
+include a final pointer to the equivalent `dcdocker build` commands. The
+legacy `kos-alpine/Dockerfile` follows the same approach and remains available
+until a separate migration or removal release is approved.
 | Docker arguments `base_image=dc-chain`, `dc_chain_version=16.2.0` | `base_image=maishuji/dc-chain:16.2.0` |
 
 Old option spellings also work with the installed commands. The default base remains under `maishuji`; use `--base-image` to override it. The output namespace does not change the base. To customize the recipe, edit the canonical asset in a source checkout and use the editable installation or rebuild the tool installation. The old top-level `kos-ready/` directory has been removed.
