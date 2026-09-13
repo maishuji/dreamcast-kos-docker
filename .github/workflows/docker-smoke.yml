@@ -89,6 +89,7 @@ jobs:
             "dcdocker/dc-chain:$VARIANT" \
             -lc '
               set -euo pipefail
+              export PATH="/opt/toolchains/dc/sh-elf/bin:$PATH"
               command -v sh-elf-gcc
               sh-elf-gcc --version
               if [ "$INCLUDE_GDB" = 1 ]; then
