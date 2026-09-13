@@ -1,9 +1,12 @@
 UV ?= uv
 
-.PHONY: lint test test-package create-env create-dev-env
+.PHONY: lint ruff test test-package create-env create-dev-env
 
-lint:
+lint: ruff
 	$(UV) run --locked python -m pylint src/dcdocker src/dcdocker/assets/kos-ready/source_build.py build_dc_toolchain_image.py build_dc_kos_full_image.py tests
+
+ruff:
+	$(UV) run --locked ruff check src/dcdocker src/dcdocker/assets/kos-ready/source_build.py build_dc_toolchain_image.py build_dc_kos_full_image.py tests
 
 test:
 	$(UV) run --locked python -m unittest discover -s tests -v

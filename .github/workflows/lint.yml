@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: make create-dev-env
 
-      - name: Lint package, compatibility scripts, and tests
+      - name: Run Ruff and Pylint over package, compatibility scripts, and tests
         run: make lint
 
   tests:
