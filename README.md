@@ -21,64 +21,74 @@ The Docker image includes several key components:
 
 ---
 
-## How to Use
+## Quick Start
 
-Use `dcdocker build` to choose what to build:
+If you only want a ready-to-use Dreamcast development image, follow these
+steps and skip the rest of the document for now.
 
-| Command | Purpose | Output image | Default profile/tag |
-| --- | --- | --- | --- |
-| `dcdocker build dc-chain` | Build the compiler toolchain. | `<namespace>/dc-chain:<profile>`, or `<namespace>/dc-chain-gdb:<profile>` with `--gdb` | `16.2.0` |
-| `dcdocker build kos-image` | Build the development image with KOS, kos-ports, GLdc, and tools. | `<namespace>/dc-kos-image:<generated-tag>` | `16.2.0` |
+### 1. Install prerequisites
 
-For a development environment, start with the **ready-to-use image** instructions below. Building the toolchain yourself is optional: the full-image build uses `maishuji/dc-chain:16.2.0` (or `maishuji/dc-chain-gdb:16.2.0` with `--gdb`).
+Install [Docker](https://docs.docker.com/get-docker/) with a running daemon,
+[Python 3.11+](https://www.python.org/downloads/), and
+[uv](https://docs.astral.sh/uv/getting-started/installation/). Check Docker
+with:
 
-### Prerequisites and Python Setup
+```sh
+docker info
+```
 
-- Install Python 3.11 or newer, [uv](https://docs.astral.sh/uv/getting-started/installation/), and Docker with a running daemon. `docker info` should succeed for your user. CI runs unit/lint checks on Python 3.11 and package checks on Python 3.11 and 3.13; CI and the Dockerfiles pin uv to `0.12.11`.
-- Allow network access for Python dependencies, Docker images, packages, and source repositories. The full-image command also queries GitHub and GitLab for snapshot choices.
-- To build the toolchain from fresh upstream sources (the default), install Git. Alternatively, provide existing sources with `--kos-path`.
+Clone this repository and run the remaining commands from its root directory.
+The build needs network access for Docker images, Alpine packages, and the KOS
+source repositories. Git is not required on the host for the ready image;
+source checkouts happen during the Docker build.
 
-Run these commands from the root of this repository:
+### 2. Install dcdocker
 
 ```sh
 uv sync --locked --no-dev
 ```
 
-Alternatively, run `make create-env`. uv creates `.venv`, installs dependencies from `uv.lock`, and installs the project in editable mode. Run this setup again after upgrading from the standalone scripts.
+This creates the project environment. Use `uv run --locked --no-dev dcdocker`
+for commands from the checkout.
 
-From the checkout, run the installed command through uv:
-
-```sh
-uv run --locked --no-dev dcdocker --help
-uv run --locked --no-dev dcdocker build --help
-uv run --locked --no-dev dcdocker build dc-chain --help
-uv run --locked --no-dev dcdocker build kos-image --help
-```
-
-For a separate local tool installation, run `uv tool install .` from this repository. Ensure uv's tool binary directory is on `PATH` (use `uv tool update-shell` if needed), then run `dcdocker` from any directory. This installation includes the Docker context and does not require a source checkout at runtime. Reinstall with `uv tool install --reinstall .` after changing the local source or recipe. `python -m dcdocker` also works in an environment where the package is installed.
-
-The examples below use `uv run --locked --no-dev dcdocker` from the checkout. With a tool installation, use `dcdocker` directly with the same arguments. `yourname` is a placeholder for your Docker image namespace.
-
-For development, install the dependencies and the pinned Pylint version, then run lint and tests:
+### 3. Build the image
 
 ```sh
-make create-dev-env
-make lint
-make test
-make test-package
+uv run --locked --no-dev dcdocker build kos-image \
+  --namespace yourname --image-tag latest
 ```
 
-`make create-dev-env` runs `uv sync --locked`, which also installs the `dev` dependency group. `make lint` runs Ruff's correctness checks and Pylint over `src/dcdocker`, both compatibility scripts, and `tests` through `uv run --locked`; run `make ruff` for the Ruff check alone. `make test` discovers and runs the unit tests in `tests/`; Docker calls are mocked, so no Docker daemon or KallistiOS checkout is needed. CI runs lint and tests as separate jobs on pull requests and pushes to `main`, using the same targets.
+The command asks you to choose KOS, kos-ports, and GLdc source snapshots. For
+each menu, choose the newest available snapshot or `master` when you want the
+current development branch. `yourname` is the namespace for the local Docker
+image; replace it with your Docker Hub username or another local name.
 
-`make test-package` builds a wheel and source archive, rebuilds a wheel from that archive, installs both into isolated environments, and checks the installed executable outside the checkout. Provisioning may require package-index access; runtime checks use fake Git/Docker commands and controlled discovery responses. CI runs these package checks on Python 3.11 and 3.13. The ordinary `make test` suite skips the opt-in package test.
+The build can take a while because Docker compiles KallistiOS and its ports.
+When it finishes, the image is available locally as:
 
-Pull requests also run cheap Dockerfile parser checks for both image recipes. The [Docker Smoke Checks workflow](.github/workflows/docker-smoke.yml) is manual-only: choose one normal or GDB variant, and optionally rebuild its toolchain from upstream sources. By default it uses the published toolchain base, builds the supported ready image, verifies the expected compiler/tools, compiles the KOS `examples/dreamcast/hello` target, and uploads only Docker/source inspection data and logs with seven-day retention. Read the [CI validation decision](docs/ci-validation.md) for the rationale and validation responsibilities. These checks require network access and are intentionally separate from pull-request tests because they can take a long time.
+```text
+yourname/dc-kos-image:latest
+```
 
-The package separates CLI prompts (`cli.py`), build specifications and planning (`builds.py`), source discovery and checkout ownership (`sources.py`), Docker commands (`docker.py`), source observations and metadata (`provenance.py`), and Python defaults (`defaults.py`). The canonical ready-image recipe and helpers live in [`src/dcdocker/assets/kos-ready/`](src/dcdocker/assets/kos-ready/). They are included in the package and copied to a temporary context for each full-image invocation. That context stays available during Docker execution and is removed after success, failure, cancellation, or interruption.
+### 4. Start the development container
 
-Dependencies are declared in `pyproject.toml`, and `uv.lock` pins their resolved versions, including transitive dependencies. Use `uv add <package>` or `uv add --dev <package>` to add dependencies, and commit both files together. The `--locked` flag makes setup fail if the lockfile needs updating; run `uv lock` after editing dependencies manually.
+```sh
+docker run --rm -it yourname/dc-kos-image:latest bash -l
+```
 
-Both build commands create local images. They do not log in to a registry or push images.
+The login shell loads the KOS development environment. The image includes the
+compiler toolchain, KOS, kos-ports, GLdc, `mkdcdisc`, and common development
+tools.
+
+## User Guide
+
+Building the toolchain separately is optional. The ready image normally uses
+the published `maishuji/dc-chain:16.2.0` base, or its GDB variant with
+`--gdb`. See the sections below when you need a different profile, source ref,
+base image, or build mode.
+
+For contributor setup, tests, linting, package checks, and CI, see the
+[developer guide](docs/development.md).
 
 ### List Profiles and Snapshots
 
