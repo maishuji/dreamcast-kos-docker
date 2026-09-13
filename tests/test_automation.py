@@ -29,7 +29,7 @@ class AutomationTests(unittest.TestCase):
     def check_ref_combination(self, selected, interactive, automated):
         """Use failing stdin/HTTP stubs to catch accidental discovery or prompts."""
         args = ["build", "kos-image", "-u", "test"]
-        for flag, supplied in zip(REF_FLAGS, selected):
+        for flag, supplied in zip(REF_FLAGS, selected, strict=True):
             if supplied:
                 args.extend([flag, "master"])
         if automated:
@@ -47,7 +47,7 @@ class AutomationTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0 if allowed else 2, result.output)
         self.assertEqual(execute.call_count, int(allowed))
         self.assertEqual(confirm.call_count, int(allowed and not automated))
-        for supplied, chooser in zip(selected, (kos, ports, gldc)):
+        for supplied, chooser in zip(selected, (kos, ports, gldc), strict=True):
             self.assertEqual(chooser.call_count, int(allowed and not supplied))
 
     def test_yes_skips_only_confirmation(self):
@@ -92,7 +92,7 @@ class AutomationTests(unittest.TestCase):
                 self.assertIn("Output image:", result.output)
                 self.assertIn("Preview only", result.output)
             for selected in product((False, True), repeat=3):
-                refs = [item for flag, present in zip(REF_FLAGS, selected)
+                refs = [item for flag, present in zip(REF_FLAGS, selected, strict=True)
                         if present for item in (flag, "master")]
                 result = CliRunner().invoke(cli.main,
                     ["build", "kos-image", "-u", "test", "--dry-run", *refs])

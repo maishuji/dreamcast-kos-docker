@@ -68,7 +68,7 @@ make test
 make test-package
 ```
 
-`make create-dev-env` runs `uv sync --locked`, which also installs the `dev` dependency group. `make lint` runs Pylint over `src/dcdocker`, both compatibility scripts, and `tests` through `uv run --locked`. `make test` discovers and runs the unit tests in `tests/`; Docker calls are mocked, so no Docker daemon or KallistiOS checkout is needed. CI runs lint and tests as separate jobs on pull requests and pushes to `main`, using the same targets.
+`make create-dev-env` runs `uv sync --locked`, which also installs the `dev` dependency group. `make lint` runs Ruff's correctness checks and Pylint over `src/dcdocker`, both compatibility scripts, and `tests` through `uv run --locked`; run `make ruff` for the Ruff check alone. `make test` discovers and runs the unit tests in `tests/`; Docker calls are mocked, so no Docker daemon or KallistiOS checkout is needed. CI runs lint and tests as separate jobs on pull requests and pushes to `main`, using the same targets.
 
 `make test-package` builds a wheel and source archive, rebuilds a wheel from that archive, installs both into isolated environments, and checks the installed executable outside the checkout. Provisioning may require package-index access; runtime checks use fake Git/Docker commands and controlled discovery responses. CI runs these package checks on Python 3.11 and 3.13. The ordinary `make test` suite skips the opt-in package test.
 
