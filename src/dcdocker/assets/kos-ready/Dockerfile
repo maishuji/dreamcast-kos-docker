@@ -70,8 +70,9 @@ RUN python3 /usr/local/lib/dcdocker/source_build.py checkout \
 #    cd /opt/toolchains/dc/kos-ports/libdcplib && \
 #    make install
 
-# Removing non-compiling libraries
-RUN rm -rf /opt/toolchains/dc/kos-ports/{libjimtcl,mruby,libmp3,cglm}
+# Removing ports that cannot currently complete the supported build.
+# liboggvorbisplay is omitted until its bundled patch is fixed upstream.
+RUN rm -rf /opt/toolchains/dc/kos-ports/{libjimtcl,mruby,libmp3,liboggvorbisplay,cglm}
 
 # raylib cannot compile due to fastmath flag, so need a workaround in this case
 #RUN cd /opt/toolchains/dc/kos-ports/raylib4dc && \

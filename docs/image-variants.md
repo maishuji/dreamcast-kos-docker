@@ -20,7 +20,7 @@ path.
 | KOS | Requested branch, tag, or full commit, fetched once | Fixed `01FEB25` branch |
 | kos-ports | Requested branch, tag, or full commit, with recursive submodules; direct Docker builds temporarily default to `fix/make-build-all-succeed` while its upstream PR is under review | Repository default branch |
 | GLdc | Requested branch, tag, or full commit, verified after installation | Makefile rewritten to a fixed `release/07DEC24` branch |
-| Ports build | Builds `libGL`, then the configured `build-all.sh` set; removes known broken ports | Builds `libGL` and `libdcplib`; leaves the broad build commented out |
+| Ports build | Builds `libGL`, then the configured `build-all.sh` set; temporarily omits known broken ports including `libjimtcl`, `mruby`, `libmp3`, `liboggvorbisplay`, and `cglm` | Builds `libGL` and `libdcplib`; leaves the broad build commented out |
 | Additional tools | `mkdcdisc`, SOIL, `dcload-ip`, graphics dependencies, `cpplint`, and source metadata | `mkdcdisc` and the older prerequisite set |
 | Environment | Sources KOS environment from `/etc/profile`; exposes user-local `uv` tools | Sources KOS environment from `/etc/profile` only |
 | User | Creates and selects `non-root` by default | Creates and selects `non-root` by default |
@@ -34,6 +34,11 @@ documented tool set must use `kos-ready`. Direct users of `kos-alpine` should
 expect its fixed snapshots, narrower port set, and lack of provenance. The
 legacy recipe must continue to parse and remain buildable enough for a
 compatibility release before removal is considered.
+
+The ready image temporarily omits `liboggvorbisplay` because its bundled patch
+currently fails against the fetched source in the current `kos-ports` tree.
+This is an explicit build exclusion, not evidence that the port is available
+in the image; it should be removed after the upstream fix is merged.
 
 Recipe changes after this decision are split into two checks:
 
