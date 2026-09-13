@@ -83,6 +83,20 @@ class CommandTests(unittest.TestCase):
         self.assertIn("tag\t01FEB25", result.output)
         self.assertIn("branch\tmaster", result.output)
 
+    def test_remote_profile_listing_uses_api_without_checkout_or_docker(self):
+        """Remote profiles use the small catalog endpoint instead of cloning."""
+        with patch.object(cli.sources, "fetch_toolchain_profiles",
+                          return_value=["16.2.0", "stable"]) as profiles, patch.object(
+                              cli.sources, "toolchain_checkout",
+                              side_effect=AssertionError("Checkout invoked")), patch.object(
+                                  cli.docker, "execute_build",
+                                  side_effect=AssertionError("Docker invoked")):
+            result = CliRunner().invoke(cli.main, ["list", "profiles"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("16.2.0", result.output)
+        self.assertIn("stable", result.output)
+        profiles.assert_called_once_with(None, False)
+
 
 class ResourceTests(unittest.TestCase):
     """Resource lifetime is independent of filesystem or ZIP package installation."""

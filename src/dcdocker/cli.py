@@ -282,12 +282,23 @@ def list_command():
     help="List profiles from this local KallistiOS checkout without fetching updates.",
 )
 @click.option("--kos-ref", help="Remote KOS branch, tag or full commit to inspect.")
-def list_profiles(kos_path, kos_ref):
+@click.option("--refresh", is_flag=True, help="Ignore a fresh catalog cache and query upstream.")
+def list_profiles(kos_path, kos_ref, refresh):
     """List Dreamcast toolchain profiles from KallistiOS sources."""
-    with sources.toolchain_checkout(kos_path, kos_ref) as source_path:
-        click.echo(f"Source: {source_path}")
-        for profile in sources.list_toolchain_profiles(source_path):
-            click.echo(profile)
+    if kos_path is not None:
+        with sources.toolchain_checkout(kos_path, kos_ref) as source_path:
+            click.echo(f"Source: {source_path}")
+            for profile in sources.list_toolchain_profiles(source_path):
+                click.echo(profile)
+        return
+    source = defaults.KOS_PROFILES_URL
+    if kos_ref is not None:
+        source += f" (ref: {kos_ref})"
+    else:
+        source += " (default branch)"
+    click.echo(f"Source: {source}")
+    for profile in sources.fetch_toolchain_profiles(kos_ref, refresh):
+        click.echo(profile)
 
 
 @list_command.command("snapshots")
@@ -300,9 +311,10 @@ def list_profiles(kos_path, kos_ref):
     type=click.IntRange(2000, 2099),
     help="Limit KOS or kos-ports snapshot tags to a 20YY year.",
 )
-def list_snapshots(source, year):
+@click.option("--refresh", is_flag=True, help="Ignore a fresh catalog cache and query upstream.")
+def list_snapshots(source, year, refresh):
     """List snapshot tags and moving branches for SOURCE."""
-    entries = sources.fetch_snapshot_entries(source.lower(), year)
+    entries = sources.fetch_snapshot_entries(source.lower(), year, use_cache=True, refresh=refresh)
     click.echo("TYPE\tREF")
     for kind, ref in entries:
         click.echo(f"{kind}\t{ref}")
