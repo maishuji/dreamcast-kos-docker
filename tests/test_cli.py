@@ -129,6 +129,19 @@ class CommandTests(unittest.TestCase):
         self.assertEqual([match.value for match in matches], ["01JAN25", "02FEB24"])
         cached.assert_called_once_with("kos", 2025)
 
+    def test_full_image_ref_options_complete_from_matching_catalogs(self):
+        """Full-image source-ref options use their respective cached catalogs."""
+        options = {option.name: option.type for option in cli.full_image_command.params}
+        for name, source in (("kos_ref", "kos"), ("kos_ports_branch", "kos-ports"),
+                             ("gldc_ref", "gldc")):
+            with self.subTest(name=name), patch.object(
+                    cli.sources, "cached_snapshot_entries",
+                    return_value=[("tag", "01FEB25"), ("branch", "master")]) as cached:
+                context = click.Context(cli.full_image_command)
+                matches = options[name].shell_complete(context, None, "01")
+            self.assertEqual([match.value for match in matches], ["01FEB25"])
+            cached.assert_called_once_with(source)
+
 
 class ResourceTests(unittest.TestCase):
     """Resource lifetime is independent of filesystem or ZIP package installation."""

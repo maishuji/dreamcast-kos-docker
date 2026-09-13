@@ -119,6 +119,18 @@ dcdocker profiles 16<TAB>
 dcdocker list snapshots kos 01<TAB>
 ```
 
+The full-image source-ref options use the same source-aware suggestions:
+
+```sh
+dcdocker build kos-image --kos-ref 01<TAB>
+dcdocker build kos-image --kos-ports-ref 01<TAB>
+dcdocker build kos-image --gldc-ref release/<TAB>
+```
+
+`--kos-ref` on `build dc-chain` is intentionally not completed from this
+catalog yet: that command checks out the official KallistiOS repository,
+whereas the snapshot catalog is for the fork used by the full-image workflow.
+
 Enable Click completion once for the shell you use:
 
 ```sh

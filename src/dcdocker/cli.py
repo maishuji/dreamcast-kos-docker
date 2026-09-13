@@ -38,6 +38,20 @@ class SnapshotPrefixType(click.ParamType):
         return [CompletionItem(ref) for _, ref in entries if ref.startswith(incomplete)]
 
 
+class SnapshotRefType(click.ParamType):
+    """Complete a build source ref from its matching fresh cached catalog."""
+
+    name = "ref"
+
+    def __init__(self, source):
+        super().__init__()
+        self.source = source
+
+    def shell_complete(self, ctx, param, incomplete):  # pylint: disable=unused-argument
+        entries = sources.cached_snapshot_entries(self.source)
+        return [CompletionItem(ref) for _, ref in entries if ref.startswith(incomplete)]
+
+
 def prompt_choice(prompt, choices):
     """Util function to prompt user for selection from a list of options.
 
@@ -198,7 +212,7 @@ def toolchain_command(**options):
     "--kos-ports-ref",
     "--kos-ports-branch",
     "kos_ports_branch",
-    type=str,
+    type=SnapshotRefType("kos-ports"),
     default=None,
     help="kos-ports branch, tag or full commit instead of interactive selection.",
 )
@@ -209,8 +223,16 @@ def toolchain_command(**options):
     default=False,
     help="Build with GDB support",
 )
-@click.option("--kos-ref", help="KOS branch, tag or full commit; skip its discovery menu")
-@click.option("--gldc-ref", help="GLdc branch, tag or full commit; skip its discovery menu")
+@click.option(
+    "--kos-ref",
+    type=SnapshotRefType("kos"),
+    help="KOS branch, tag or full commit; skip its discovery menu",
+)
+@click.option(
+    "--gldc-ref",
+    type=SnapshotRefType("gldc"),
+    help="GLdc branch, tag or full commit; skip its discovery menu",
+)
 @click.option("--base-image", help="Complete base reference, overriding the default base selection")
 @click.option("--image-tag", help="Override the output image tag")
 @click.option("--metadata-file", type=click.Path(path_type=Path, dir_okay=False),
