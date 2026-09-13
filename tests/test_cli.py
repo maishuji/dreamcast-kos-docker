@@ -71,6 +71,18 @@ class CommandTests(unittest.TestCase):
             toolchain.assert_not_called()
             context.assert_not_called()
 
+    def test_list_snapshots_prints_typed_refs_without_building(self):
+        """Snapshot listing prints refs without invoking Docker."""
+        with patch.object(cli.sources, "fetch_snapshot_entries",
+                          return_value=[("tag", "01FEB25"), ("branch", "master")]), \
+             patch.object(cli.docker, "execute_build",
+                          side_effect=AssertionError("Docker invoked")):
+            result = CliRunner().invoke(cli.main, ["list", "snapshots", "kos"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("TYPE\tREF", result.output)
+        self.assertIn("tag\t01FEB25", result.output)
+        self.assertIn("branch\tmaster", result.output)
+
 
 class ResourceTests(unittest.TestCase):
     """Resource lifetime is independent of filesystem or ZIP package installation."""

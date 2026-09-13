@@ -80,6 +80,35 @@ Dependencies are declared in `pyproject.toml`, and `uv.lock` pins their resolved
 
 Both build commands create local images. They do not log in to a registry or push images.
 
+### List Profiles and Snapshots
+
+List available Dreamcast toolchain profiles from a fresh KallistiOS checkout:
+
+```sh
+dcdocker list profiles
+dcdocker list profiles --kos-path /path/to/KallistiOS
+```
+
+The first form clones a temporary checkout using the remote default branch;
+`--kos-ref` can select a branch, tag, or full commit. The local form reads the
+checkout as-is and does not fetch updates. Both forms are read-only and do not
+invoke Docker.
+
+List source snapshot choices without starting a build:
+
+```sh
+dcdocker list snapshots kos
+dcdocker list snapshots kos-ports --year 2025
+dcdocker list snapshots gldc
+```
+
+For KOS and kos-ports, snapshot tags use the `DDMONYY` naming convention and
+the moving `master` branch is also shown. GLdc lists its `release/*` branches
+and `master`; it does not present those branches as Git tags. Snapshot listing
+uses the same bounded pagination and provider-error handling as interactive
+build selection. These commands require network access unless profiles are
+listed with `--kos-path`.
+
 ### Build a Ready-to-Use Image
 
 The command uses its packaged Docker context from any working directory. A local KallistiOS checkout is not required; the Dockerfile clones the sources inside the image.
