@@ -1,10 +1,14 @@
 """Discovery, checkout ownership, and source-layout validation."""
 
 from contextlib import contextmanager
+import hashlib
 from importlib import resources
+import json
+import os
 from pathlib import Path
 import re
 import shlex
+import time
 from urllib.parse import parse_qs, urlsplit
 import subprocess
 from tempfile import TemporaryDirectory
@@ -123,20 +127,154 @@ def filter_tags_by_year(tags, year):
     return [tag for tag in tags if SNAPSHOT_TAG.fullmatch(tag) and "20" + tag[-2:] == year]
 
 
-def fetch_snapshot_entries(source, year=None):
+def cache_directory():
+    """Return the per-user cache directory without creating it."""
+    configured = os.environ.get("XDG_CACHE_HOME")
+    root = Path(configured).expanduser() if configured else Path.home() / ".cache"
+    return root / "dcdocker"
+
+
+def _cache_path(catalog_key):
+    """Map a catalog identity to a safe cache filename."""
+    digest = hashlib.sha256(catalog_key.encode("utf-8")).hexdigest()
+    return cache_directory() / f"catalog-{digest}.json"
+
+
+def _read_cached_catalog(catalog_key):
+    """Return a fresh cached catalog, or None for missing/invalid/expired data."""
+    path = _cache_path(catalog_key)
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        fetched_at = float(cached["fetched_at"])
+        values = cached["values"]
+        if cached["version"] != defaults.CATALOG_CACHE_VERSION:
+            return None
+        if time.time() - fetched_at >= defaults.CATALOG_CACHE_TTL:
+            return None
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            return None
+        return values
+    except (OSError, TypeError, ValueError, KeyError):
+        return None
+
+
+def _write_cached_catalog(catalog_key, values):
+    """Persist a successful catalog response using an atomic replacement."""
+    path = _cache_path(catalog_key)
+    temporary = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = path.with_suffix(f".tmp-{os.getpid()}")
+        temporary = temporary_path
+        temporary_path.write_text(
+            json.dumps({
+                "version": defaults.CATALOG_CACHE_VERSION,
+                "fetched_at": time.time(),
+                "values": values,
+            }, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary_path, path)
+    except OSError:
+        # A read-only or unavailable cache must not make a read-only listing fail.
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+
+
+def _catalog(catalog_key, fetcher, refresh):
+    """Return a cached catalog when fresh, otherwise fetch and cache it."""
+    if not refresh:
+        cached = _read_cached_catalog(catalog_key)
+        if cached is not None:
+            return cached
+    values = fetcher()
+    _write_cached_catalog(catalog_key, values)
+    return values
+
+
+def _fetch_profile_names(kos_ref=None):
+    """Fetch only KallistiOS profile-directory metadata from GitHub."""
+    params = {"ref": kos_ref} if kos_ref is not None else None
+    try:
+        response = requests.get(defaults.KOS_PROFILES_URL, params=params,
+                                timeout=defaults.REQUEST_TIMEOUT)
+    except requests.Timeout as error:
+        raise click.ClickException(
+            "Fetching KallistiOS profiles timed out. Try again later "
+            f"({defaults.KOS_PROFILES_URL})."
+        ) from error
+    except requests.RequestException as error:
+        raise click.ClickException(
+            "Could not fetch KallistiOS profiles. Check your connection and try again "
+            f"({defaults.KOS_PROFILES_URL})."
+        ) from error
+    if response.status_code != 200:
+        guidance = (
+            "Check service access or rate limits and try again later."
+            if response.status_code in (403, 429)
+            else "Check the repository, ref, and service availability."
+        )
+        raise click.ClickException(
+            f"Could not fetch KallistiOS profiles (HTTP {response.status_code}). "
+            f"{guidance} ({defaults.KOS_PROFILES_URL})"
+        )
+    try:
+        entries = response.json()
+    except ValueError as error:
+        raise click.ClickException(
+            "Invalid JSON while fetching KallistiOS profiles. Try again later "
+            f"({defaults.KOS_PROFILES_URL})."
+        ) from error
+    if not isinstance(entries, list) or any(
+            not isinstance(entry, dict) or not isinstance(entry.get("name"), str)
+            for entry in entries):
+        raise click.ClickException(
+            "Unexpected response while fetching KallistiOS profiles. "
+            f"Expected a directory listing ({defaults.KOS_PROFILES_URL})."
+        )
+    profiles = sorted({
+        entry["name"][:-3] for entry in entries
+        if entry.get("type") == "file"
+        and entry["name"].endswith(".mk")
+        and len(entry["name"]) > 3
+    })
+    if not profiles:
+        raise click.ClickException(
+            "No Dreamcast toolchain profiles found in the selected KallistiOS sources."
+        )
+    return profiles
+
+
+def fetch_toolchain_profiles(kos_ref=None, refresh=False):
+    """List profile names through the small GitHub directory API response."""
+    ref_key = "<default>" if kos_ref is None else f"ref:{kos_ref}"
+    return _catalog(f"profiles:{defaults.KOS_PROFILES_URL}:{ref_key}",
+                    lambda: _fetch_profile_names(kos_ref), refresh)
+
+
+def fetch_snapshot_entries(source, year=None, *, use_cache=False, refresh=False):
     """Return user-facing snapshot refs with explicit tag/branch labels."""
     if source == "kos":
-        tags = fetch_snapshot_kos_tags()
+        fetcher = fetch_snapshot_kos_tags
+        key = f"snapshots:{defaults.KOS_TAGS_URL}"
     elif source == "kos-ports":
-        tags = fetch_snapshot_kosports_tags()
+        fetcher = fetch_snapshot_kosports_tags
+        key = f"snapshots:{defaults.KOS_PORTS_TAGS_URL}"
     elif source == "gldc":
         if year is not None:
             raise click.UsageError("--year applies only to KOS and kos-ports snapshots")
-        return [("branch", branch) for branch in fetch_release_branches_gldc()]
+        fetcher = fetch_release_branches_gldc
+        key = f"snapshots:{defaults.GLDC_BRANCHES_URL}"
     else:
         raise click.UsageError(f"Unsupported snapshot source: {source}")
+    values = _catalog(key, fetcher, refresh) if use_cache else fetcher()
+    if source == "gldc":
+        return [("branch", branch) for branch in values]
 
-    snapshot_tags = [tag for tag in tags if SNAPSHOT_TAG.fullmatch(tag)]
+    snapshot_tags = [tag for tag in values if SNAPSHOT_TAG.fullmatch(tag)]
     if year is not None:
         snapshot_tags = filter_tags_by_year(snapshot_tags, str(year))
     return [("tag", tag) for tag in snapshot_tags] + [("branch", "master")]

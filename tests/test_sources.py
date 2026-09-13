@@ -19,7 +19,9 @@ def response(names, headers=None):
     """Use real Requests header/link parsing against an offline provider fixture."""
     result = requests.Response()
     result.status_code = 200
-    result._content = json.dumps([{"name": name} for name in names]).encode()  # pylint: disable=protected-access
+    result._content = json.dumps([  # pylint: disable=protected-access
+        {"name": name, "type": "file"} for name in names
+    ]).encode()
     result.headers.update(headers or {})
     return result
 
@@ -72,6 +74,49 @@ class DiscoveryTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(click.UsageError, "--year applies only"):
                 sources.fetch_snapshot_entries("gldc", 2024)
+
+    def test_remote_profiles_fetch_directory_metadata_and_cache(self):
+        entries = [
+            {"name": "stable.mk", "type": "file"},
+            {"name": "16.2.0.mk", "type": "file"},
+            {"name": "README.md", "type": "file"},
+            {"name": "nested.mk", "type": "dir"},
+        ]
+        result = requests.Response()
+        result.status_code = 200
+        result._content = json.dumps(entries).encode()  # pylint: disable=protected-access
+        with TemporaryDirectory(prefix="dcdocker-cache-") as directory, patch.object(
+                sources, "cache_directory", return_value=Path(directory)), patch.object(
+                    sources.requests, "get", return_value=result) as get:
+            self.assertEqual(sources.fetch_toolchain_profiles(), ["16.2.0", "stable"])
+            self.assertEqual(sources.fetch_toolchain_profiles(), ["16.2.0", "stable"])
+            self.assertEqual(get.call_count, 1)
+            get.assert_called_once_with(
+                defaults.KOS_PROFILES_URL, params=None, timeout=defaults.REQUEST_TIMEOUT
+            )
+
+    def test_remote_profiles_refresh_and_ref_use_separate_request(self):
+        result = response(["stable.mk"])
+        with TemporaryDirectory(prefix="dcdocker-cache-") as directory, patch.object(
+                sources, "cache_directory", return_value=Path(directory)), patch.object(
+                    sources.requests, "get", return_value=result) as get:
+            sources.fetch_toolchain_profiles("feature/profiles")
+            sources.fetch_toolchain_profiles("feature/profiles")
+            sources.fetch_toolchain_profiles("feature/profiles", refresh=True)
+            self.assertEqual(get.call_count, 2)
+            self.assertEqual(get.call_args_list[0].kwargs["params"], {"ref": "feature/profiles"})
+
+    def test_snapshot_listing_cache_does_not_change_build_discovery(self):
+        with TemporaryDirectory(prefix="dcdocker-cache-") as directory, patch.object(
+                sources, "cache_directory", return_value=Path(directory)), patch.object(
+                    sources, "fetch_snapshot_kos_tags", return_value=["01JAN25"]) as fetch:
+            self.assertEqual(
+                sources.fetch_snapshot_entries("kos", use_cache=True),
+                [("tag", "01JAN25"), ("branch", "master")],
+            )
+            sources.fetch_snapshot_entries("kos", use_cache=True)
+            sources.fetch_snapshot_entries("kos")
+            self.assertEqual(fetch.call_count, 2)
 
     def test_full_pages_without_headers_continue_until_empty(self):
         pages = [response([str(number) for number in range(defaults.REF_PAGE_SIZE)]),

@@ -82,17 +82,30 @@ Both build commands create local images. They do not log in to a registry or pus
 
 ### List Profiles and Snapshots
 
-List available Dreamcast toolchain profiles from a fresh KallistiOS checkout:
+List available Dreamcast toolchain profiles:
 
 ```sh
 dcdocker list profiles
 dcdocker list profiles --kos-path /path/to/KallistiOS
 ```
 
-The first form clones a temporary checkout using the remote default branch;
-`--kos-ref` can select a branch, tag, or full commit. The local form reads the
-checkout as-is and does not fetch updates. Both forms are read-only and do not
-invoke Docker.
+The remote form queries only the KallistiOS profile-directory metadata; it does
+not clone the repository or download profile contents. `--kos-ref` can select a
+branch, tag, or full commit. The local form reads the checkout as-is and does
+not fetch updates. Both forms are read-only and do not invoke Docker.
+
+Remote profile and snapshot catalogs are cached for one hour under
+`$XDG_CACHE_HOME/dcdocker` (or `~/.cache/dcdocker`). Use `--refresh` to bypass a
+fresh cache entry:
+
+```sh
+dcdocker list profiles --refresh
+dcdocker list snapshots kos --refresh
+```
+
+The cache is keyed by the API endpoint and requested ref. Expired or corrupt
+entries are refreshed; failed requests are never cached, and stale results are
+not silently used after a failed refresh.
 
 List source snapshot choices without starting a build:
 
