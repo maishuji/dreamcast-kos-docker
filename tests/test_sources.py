@@ -51,6 +51,28 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(branches, ["release/01JAN24", "master", "release/01JAN27"])
         self.assertEqual(get.call_count, 2)
 
+    def test_snapshot_entries_label_tags_and_branches(self):
+        with patch.object(sources, "fetch_snapshot_kos_tags",
+                          return_value=["01JAN24", "02FEB27", "feature", "master"]):
+            self.assertEqual(
+                sources.fetch_snapshot_entries("kos"),
+                [("tag", "01JAN24"), ("tag", "02FEB27"), ("branch", "master")],
+            )
+            self.assertEqual(
+                sources.fetch_snapshot_entries("kos", 2027),
+                [("tag", "02FEB27"), ("branch", "master")],
+            )
+
+    def test_snapshot_entries_keep_gldc_release_branches(self):
+        with patch.object(sources, "fetch_release_branches_gldc",
+                          return_value=["release/01JAN24", "master"]):
+            self.assertEqual(
+                sources.fetch_snapshot_entries("gldc"),
+                [("branch", "release/01JAN24"), ("branch", "master")],
+            )
+            with self.assertRaisesRegex(click.UsageError, "--year applies only"):
+                sources.fetch_snapshot_entries("gldc", 2024)
+
     def test_full_pages_without_headers_continue_until_empty(self):
         pages = [response([str(number) for number in range(defaults.REF_PAGE_SIZE)]),
                  response([])]
@@ -172,6 +194,16 @@ class CheckoutCompatibilityTests(unittest.TestCase):
         self.assertNotIn("makejobs=4", command)
         self.assertNotIn("include_gdb=0", command)
         self.assertIn("upstream concurrency defaults", result.output)
+
+    def test_list_profiles_uses_local_checkout_without_docker(self):
+        with patch("dcdocker.docker.execute_build",
+                   side_effect=AssertionError("Docker invoked")):
+            result = CliRunner().invoke(
+                cli.main, ["list", "profiles", "--kos-path", str(self.source)]
+            )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn(f"Source: {self.source}", result.output)
+        self.assertIn("custom", result.output)
 
     def test_missing_profile_or_interface_fails_before_docker(self):
         cases = [("FROM alpine\nARG include_gdb=0\n", [], "ARG profile"),

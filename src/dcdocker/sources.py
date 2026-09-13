@@ -123,6 +123,46 @@ def filter_tags_by_year(tags, year):
     return [tag for tag in tags if SNAPSHOT_TAG.fullmatch(tag) and "20" + tag[-2:] == year]
 
 
+def fetch_snapshot_entries(source, year=None):
+    """Return user-facing snapshot refs with explicit tag/branch labels."""
+    if source == "kos":
+        tags = fetch_snapshot_kos_tags()
+    elif source == "kos-ports":
+        tags = fetch_snapshot_kosports_tags()
+    elif source == "gldc":
+        if year is not None:
+            raise click.UsageError("--year applies only to KOS and kos-ports snapshots")
+        return [("branch", branch) for branch in fetch_release_branches_gldc()]
+    else:
+        raise click.UsageError(f"Unsupported snapshot source: {source}")
+
+    snapshot_tags = [tag for tag in tags if SNAPSHOT_TAG.fullmatch(tag)]
+    if year is not None:
+        snapshot_tags = filter_tags_by_year(snapshot_tags, str(year))
+    return [("tag", tag) for tag in snapshot_tags] + [("branch", "master")]
+
+
+def list_toolchain_profiles(source_path):
+    """List Dreamcast toolchain profile names from a KallistiOS checkout."""
+    profile_directory = source_path / defaults.TOOLCHAIN_PROFILES
+    try:
+        if not profile_directory.is_dir():
+            raise OSError("directory does not exist")
+        profiles = sorted(
+            path.stem for path in profile_directory.iterdir()
+            if path.is_file() and path.suffix == ".mk"
+        )
+    except OSError as file_error:
+        raise click.ClickException(
+            f"Cannot read toolchain profiles at {profile_directory}: {file_error}"
+        ) from file_error
+    if not profiles:
+        raise click.ClickException(
+            f"No Dreamcast toolchain profiles found at {profile_directory}."
+        )
+    return profiles
+
+
 def fetch_snapshot_kos_tags():
     """Discover KallistiOS tags using GitHub's paginated repository tags endpoint."""
     return fetch_ref_names(defaults.KOS_TAGS_URL, "KallistiOS")

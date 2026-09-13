@@ -258,7 +258,7 @@ def show_full_image(spec, plan):
 
 @click.group()
 def main():
-    """Build Docker images for Dreamcast development."""
+    """Build images and list KOS development sources."""
 
 
 @main.group()
@@ -268,6 +268,44 @@ def build():
 
 build.add_command(toolchain_command, "dc-chain")
 build.add_command(full_image_command, "kos-image")
+
+
+@main.group(name="list")
+def list_command():
+    """List available KOS profiles and source snapshots."""
+
+
+@list_command.command("profiles")
+@click.option(
+    "--kos-path",
+    type=click.Path(exists=True, file_okay=False, resolve_path=True, path_type=Path),
+    help="List profiles from this local KallistiOS checkout without fetching updates.",
+)
+@click.option("--kos-ref", help="Remote KOS branch, tag or full commit to inspect.")
+def list_profiles(kos_path, kos_ref):
+    """List Dreamcast toolchain profiles from KallistiOS sources."""
+    with sources.toolchain_checkout(kos_path, kos_ref) as source_path:
+        click.echo(f"Source: {source_path}")
+        for profile in sources.list_toolchain_profiles(source_path):
+            click.echo(profile)
+
+
+@list_command.command("snapshots")
+@click.argument(
+    "source",
+    type=click.Choice(("kos", "kos-ports", "gldc"), case_sensitive=False),
+)
+@click.option(
+    "--year",
+    type=click.IntRange(2000, 2099),
+    help="Limit KOS or kos-ports snapshot tags to a 20YY year.",
+)
+def list_snapshots(source, year):
+    """List snapshot tags and moving branches for SOURCE."""
+    entries = sources.fetch_snapshot_entries(source.lower(), year)
+    click.echo("TYPE\tREF")
+    for kind, ref in entries:
+        click.echo(f"{kind}\t{ref}")
 
 
 def legacy_notice(command):
