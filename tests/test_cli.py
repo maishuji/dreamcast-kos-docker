@@ -4,6 +4,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
+import click
 from click.testing import CliRunner
 
 from dcdocker import cli, sources
@@ -96,6 +97,37 @@ class CommandTests(unittest.TestCase):
         self.assertIn("16.2.0", result.output)
         self.assertIn("stable", result.output)
         profiles.assert_called_once_with(None, False)
+
+    def test_listing_prefix_filters_output_and_short_profile_alias(self):
+        """The short alias accepts a prefix and filters normal output."""
+        with patch.object(cli.sources, "fetch_toolchain_profiles",
+                          return_value=["16.2.0", "stable"]):
+            result = CliRunner().invoke(cli.main, ["profiles", "16"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("16.2.0", result.output)
+        self.assertNotIn("\nstable\n", result.output)
+
+    def test_profile_completion_reads_cache_only(self):
+        """Profile completion never falls back to a network fetch."""
+        context = click.Context(cli.list_profiles)
+        context.params = {"kos_path": None, "kos_ref": None}
+        with patch.object(cli.sources, "cached_toolchain_profiles",
+                          return_value=["16.2.0", "stable"]), patch.object(
+                              cli.sources, "fetch_toolchain_profiles",
+                              side_effect=AssertionError("Network fetch invoked")):
+            matches = cli.ProfilePrefixType().shell_complete(context, None, "16")
+        self.assertEqual([match.value for match in matches], ["16.2.0"])
+
+    def test_snapshot_completion_filters_cached_source_and_year(self):
+        """Snapshot completion forwards source and year to the cache lookup."""
+        context = click.Context(cli.list_snapshots)
+        context.params = {"source": "kos", "year": 2025}
+        with patch.object(cli.sources, "cached_snapshot_entries", return_value=[
+                ("tag", "01JAN25"), ("tag", "02FEB24"), ("branch", "master")
+        ]) as cached:
+            matches = cli.SnapshotPrefixType().shell_complete(context, None, "0")
+        self.assertEqual([match.value for match in matches], ["01JAN25", "02FEB24"])
+        cached.assert_called_once_with("kos", 2025)
 
 
 class ResourceTests(unittest.TestCase):

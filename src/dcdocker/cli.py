@@ -4,8 +4,38 @@ from dataclasses import replace
 from pathlib import Path
 
 import click
+from click.shell_completion import CompletionItem
 
 from dcdocker import builds, defaults, docker, sources, validation
+
+
+class ProfilePrefixType(click.ParamType):
+    """Complete profiles from local sources or the fresh remote cache only."""
+
+    name = "prefix"
+
+    def shell_complete(self, ctx, param, incomplete):  # pylint: disable=unused-argument
+        try:
+            kos_path = ctx.params.get("kos_path")
+            if kos_path is not None:
+                values = sources.list_toolchain_profiles(Path(kos_path))
+            else:
+                values = sources.cached_toolchain_profiles(ctx.params.get("kos_ref")) or []
+        except (OSError, click.ClickException):
+            return []
+        return [CompletionItem(value) for value in values if value.startswith(incomplete)]
+
+
+class SnapshotPrefixType(click.ParamType):
+    """Complete snapshot refs from the fresh cache without network access."""
+
+    name = "prefix"
+
+    def shell_complete(self, ctx, param, incomplete):  # pylint: disable=unused-argument
+        source = ctx.params.get("source")
+        year = ctx.params.get("year")
+        entries = sources.cached_snapshot_entries(source.lower() if source else source, year)
+        return [CompletionItem(ref) for _, ref in entries if ref.startswith(incomplete)]
 
 
 def prompt_choice(prompt, choices):
@@ -283,13 +313,15 @@ def list_command():
 )
 @click.option("--kos-ref", help="Remote KOS branch, tag or full commit to inspect.")
 @click.option("--refresh", is_flag=True, help="Ignore a fresh catalog cache and query upstream.")
-def list_profiles(kos_path, kos_ref, refresh):
+@click.argument("prefix", required=False, default="", type=ProfilePrefixType())
+def list_profiles(kos_path, kos_ref, refresh, prefix):
     """List Dreamcast toolchain profiles from KallistiOS sources."""
     if kos_path is not None:
         with sources.toolchain_checkout(kos_path, kos_ref) as source_path:
             click.echo(f"Source: {source_path}")
             for profile in sources.list_toolchain_profiles(source_path):
-                click.echo(profile)
+                if profile.startswith(prefix):
+                    click.echo(profile)
         return
     source = defaults.KOS_PROFILES_URL
     if kos_ref is not None:
@@ -298,7 +330,13 @@ def list_profiles(kos_path, kos_ref, refresh):
         source += " (default branch)"
     click.echo(f"Source: {source}")
     for profile in sources.fetch_toolchain_profiles(kos_ref, refresh):
-        click.echo(profile)
+        if profile.startswith(prefix):
+            click.echo(profile)
+
+
+# Keep the short spelling from the interactive workflow while retaining the
+# grouped command documented for the rest of the listing commands.
+main.add_command(list_profiles, "profiles")
 
 
 @list_command.command("snapshots")
@@ -312,12 +350,14 @@ def list_profiles(kos_path, kos_ref, refresh):
     help="Limit KOS or kos-ports snapshot tags to a 20YY year.",
 )
 @click.option("--refresh", is_flag=True, help="Ignore a fresh catalog cache and query upstream.")
-def list_snapshots(source, year, refresh):
+@click.argument("prefix", required=False, default="", type=SnapshotPrefixType())
+def list_snapshots(source, year, refresh, prefix):
     """List snapshot tags and moving branches for SOURCE."""
     entries = sources.fetch_snapshot_entries(source.lower(), year, use_cache=True, refresh=refresh)
     click.echo("TYPE\tREF")
     for kind, ref in entries:
-        click.echo(f"{kind}\t{ref}")
+        if ref.startswith(prefix):
+            click.echo(f"{kind}\t{ref}")
 
 
 def legacy_notice(command):

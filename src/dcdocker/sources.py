@@ -255,6 +255,12 @@ def fetch_toolchain_profiles(kos_ref=None, refresh=False):
                     lambda: _fetch_profile_names(kos_ref), refresh)
 
 
+def cached_toolchain_profiles(kos_ref=None):
+    """Return cached profile names without contacting the network."""
+    ref_key = "<default>" if kos_ref is None else f"ref:{kos_ref}"
+    return _read_cached_catalog(f"profiles:{defaults.KOS_PROFILES_URL}:{ref_key}")
+
+
 def fetch_snapshot_entries(source, year=None, *, use_cache=False, refresh=False):
     """Return user-facing snapshot refs with explicit tag/branch labels."""
     if source == "kos":
@@ -274,6 +280,29 @@ def fetch_snapshot_entries(source, year=None, *, use_cache=False, refresh=False)
     if source == "gldc":
         return [("branch", branch) for branch in values]
 
+    snapshot_tags = [tag for tag in values if SNAPSHOT_TAG.fullmatch(tag)]
+    if year is not None:
+        snapshot_tags = filter_tags_by_year(snapshot_tags, str(year))
+    return [("tag", tag) for tag in snapshot_tags] + [("branch", "master")]
+
+
+def cached_snapshot_entries(source, year=None):
+    """Return cached snapshot entries without contacting the network."""
+    if source == "kos":
+        key = f"snapshots:{defaults.KOS_TAGS_URL}"
+    elif source == "kos-ports":
+        key = f"snapshots:{defaults.KOS_PORTS_TAGS_URL}"
+    elif source == "gldc":
+        if year is not None:
+            return []
+        key = f"snapshots:{defaults.GLDC_BRANCHES_URL}"
+    else:
+        return []
+    values = _read_cached_catalog(key)
+    if values is None:
+        return []
+    if source == "gldc":
+        return [("branch", branch) for branch in values]
     snapshot_tags = [tag for tag in values if SNAPSHOT_TAG.fullmatch(tag)]
     if year is not None:
         snapshot_tags = filter_tags_by_year(snapshot_tags, str(year))

@@ -87,6 +87,8 @@ List available Dreamcast toolchain profiles:
 ```sh
 dcdocker list profiles
 dcdocker list profiles --kos-path /path/to/KallistiOS
+dcdocker list profiles 16
+dcdocker profiles 16
 ```
 
 The remote form queries only the KallistiOS profile-directory metadata; it does
@@ -106,6 +108,34 @@ dcdocker list snapshots kos --refresh
 The cache is keyed by the API endpoint and requested ref. Expired or corrupt
 entries are refreshed; failed requests are never cached, and stale results are
 not silently used after a failed refresh.
+
+The optional final argument is a prefix filter and supports shell completion.
+After the catalog has been populated once, type a prefix and press Tab to see
+matching profiles or snapshot refs. Completion reads only the fresh local
+cache, so it never starts a network request during Tab completion:
+
+```sh
+dcdocker profiles 16<TAB>
+dcdocker list snapshots kos 01<TAB>
+```
+
+Enable Click completion once for the shell you use:
+
+```sh
+# Bash
+eval "$(_DCDOCKER_COMPLETE=bash_source dcdocker)"
+
+# Zsh
+eval "$(_DCDOCKER_COMPLETE=zsh_source dcdocker)"
+
+# Fish
+_DCDOCKER_COMPLETE=fish_source dcdocker | source
+```
+
+If the cache is empty or expired, completion returns no dynamic suggestions;
+run the corresponding listing command or add `--refresh` first. The numbered
+menus used by `build kos-image` remain separate and do not provide inline Tab
+completion.
 
 List source snapshot choices without starting a build:
 
